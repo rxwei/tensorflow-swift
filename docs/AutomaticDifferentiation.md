@@ -160,32 +160,45 @@ support. We enable library designers and developers to easily define any type to
 represent a real vector space or declare functions as being differentiable, all
 in pure Swift code.
 
+#### Requirements
+
 To achieve this, Swift’s AD system needs to know some key ingredients for a type
 to be compatible with differentiation, including:
 
 * The type must represent a arbitrarily ranked vector space (where tensors
-  live). Elements of this vector space must be floating point numeric. There is
-  an associated scalar type that is also floating point numeric.
+  live). Elements of this vector space must be real numbers.
+  
+* The vector space represented by this type has an associated [tangent
+  space](https://en.wikipedia.org/wiki/Tangent_space) and [cotangent
+  space](https://en.wikipedia.org/wiki/Cotangent_space). These are where
+  Jacobian elements live.
 
-* How to initialize an adjoint value for a parameter from a scalar, with the
-  same dimensionality as this parameter. This will be used to initialize a zero
-  derivative when the parameter does not contribute to the output.
-
-* How to initialize a seed value from a value of the scalar type. This will be
-  used to initialize a differentiation seed - usually `1.0`, which represents
-  `dy/dy`. Note: the seed type in the adjoint can be an `Optional`, so when
-  there is no back-propagated adjoint, the value will be set to `nil`. However
-  this will cause performance issues with TensorFlow’s `Tensor` type today
-  (optional checks causing send/receive). We need to finish the implementation
-  of constant expression analysis to be able to fold the optional check away.
+* How to initialize a value of this type from a value of its scalar type. This
+  will be used to initialize a differentiation seed - usually `1.0`, which
+  represents `dy/dy`.
+  
+  - Note: Ideally, the seed type should be `Optional`, so when there is no
+    back-propagated adjoint, the value will be `nil`. However this will cause
+    performance issues with TensorFlow’s `Tensor` type today (optional checks
+    causing send/receive). We will need to extend the compiler to eliminate
+    certain control flow that checks for optionals, which can be considered as a
+    form of jump threading.
 
 * How values of this type will combine at data flow fan-ins in the adjoint
   computation. By the sum and product rule, this is usually addition. Addition
   is defined on the
   [`Numeric`](https://developer.apple.com/documentation/swift/numeric) protocol.
 
-Floating point scalars already have properties above, because of the conformance
-to the `FloatingPoint` protocol, which inherits from the `Numeric` protocol.
+Knowing these requirements, we determine that floating point scalars already
+support differentiation because of their conformances to the `FloatingPoint`
+protocol, which inherits from the `Numeric` protocol.
+
+#### Structs and tuples
+
+
+
+#### Custom types
+
 Similarly, we define a `VectorNumeric` protocol, which declares the four
 requirements to represent a vector space.
 
@@ -201,17 +214,25 @@ public protocol VectorNumeric {
 }
 ```
 
-`VectorNumeric` and `Numeric`/`FloatingPoint` are semantically disjoint. We say
-that a type supports scalar differentiation when it conforms to the
-`FloatingPoint`. We say that a type supports **vector differentiation** when it
-conforms to `VectorNumeric` while its `ScalarElement` supports **scalar
-differentiation** (i.e. conforms to the `FloatingPoint` protocol).
+Note: `VectorNumeric` and `Numeric`/`FloatingPoint` are currently semantically
+disjoint due to liminations in the existing `Numeric` protocol, but we are
+working with the Swift community to improve the `Numeric` protcol so that
+`VectorNumeric` can inherit from a protocol that defines arithmetic operators.
 
-**Note:** According to the standard library, `Numeric` is only suitable for
-scalars, not for aggregate mathematical objects like vectors, and so is
-`FloatingPoint`. Today we make `VectorNumeric` have duplicate operators, but we
-hope to make a case for a more general numeric protocol in the Swift standard
-library.
+```swift
+public protocol DifferentiableVectorNumeric : VectorNumeric
+  where ScalarElement : FloatingPoint {
+  /// The tangent space of the vector space represented by the enclosing type.
+  associatedtype Tangent : VectorNumeric
+
+  /// The cotangent space of the vector space represented by the enclosing type.
+  associatedtype Cotangent : VectorNumeric
+
+  var tangent: Tangent { get }
+
+  var cotangent: Cotangent { get }
+}
+```
 
 To make a type support differentiation, the user can simply add a conformance to
 `FloatingPoint` or `VectorNumeric`. For example, TensorFlow’s `Tensor<Scalar>`
