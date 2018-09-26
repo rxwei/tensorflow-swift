@@ -120,3 +120,70 @@ public protocol DifferentiableModule {
 ```
 
 ## A new function representation
+
+
+
+
+In the [Automatic Differentiation](https://github.com/tensorflow/swift/blob/master/docs/AutomaticDifferentiation.md) model that I've been building and incubating for Swift, an interesting problem to encode differentiability into function types. At a high level, the purpose of this is to make these three use cases possible:
+### 1. [Differentiating opaque closures](https://github.com/tensorflow/swift/blob/master/docs/AutomaticDifferentiation.md#differentiating-opaque-closures-and-dynamic-method-dispatch)
+
+In order for an opaque closure to be differentiable, we have to make differentiability as part of the function type, e.g.
+
+```swift
+func foo(_ f: @differentiable (Float) -> Float) -> Float {
+    // Computing the gradient of `f` at x = 0.
+    return #gradient(f)(0)
+}
+```
+
+### 2. Support cross-module differentiation without serialization.
+
+Automatic Differentiation is a first-class language feature, implemented as a compiler transformation. When the user marks a function as `@differentiable`, AD will try differentiate the function in the current module and emit diagnostics if necessary.
+
+In module A:
+```swift
+@differentiable(reverse)
+func foo(_ x: Float) -> Float {
+    ...
+}
+```
+
+In module B:
+```swift
+#gradient(foo)
+```
+
+### 3. Support differentiability as part of a protocol requirement.
+
+High-level neural network APIs will require the computation of a module to be differentiable. The following is a simple high-level neural network API. 
+
+```swift
+protocol DifferentiableModule {
+    associatedtype Scalar : FloatingPoint
+    associatedtype Input, Output
+    associatedtype Parameters : ParameterAggregate
+
+    @differentiable
+    func prediction(for input: Input, using paramerters: Parameters) -> Output
+}
+
+protocol Model : DifferentiableModule {
+    func loss(of predicted: Output, from expected: Output) -> Scalar
+}
+
+extension Model {
+    func lossAndGradients(for input: Input, 
+                          using parameters: Parameters, 
+                          from expected: Output) -> (loss: Scalar, gradients: Parameters) {
+        let (loss, (_, paramGrads)) = #valueAndGradient({ input, parameters in
+            loss(of: predictions(for: input, using parameters), from: expected)
+        })(input, parameters, expected)
+        return (loss: loss, gradients: paramGrads)
+    }
+}
+```
+differentiable-attr ::= '@differentiable'
+```
+
+
+
