@@ -1,6 +1,6 @@
 # Automatic Differentiation: Generalized Differentiability
 
-* Author: [@rxwei](https://github.com/rxwei)
+* Author: [Richard Wei](https://github.com/rxwei)
 
 ## Abstract
 
@@ -12,9 +12,10 @@ differentiating concrete functions defined in a local module, but does not allow
 differentiation of opaque function values or methods required by protocols.
 While the former is not a struct requirement in machine learning systems, the
 latter fundamentally obstructs composable, protocol-oriented machine learning
-APIs. This proposal introduces a new function type attribute in the Swift
-language, `@differentiable`, which encodes a function's differentiability
-throughout the language.
+APIs. This document describes a new formalization of differentiability in
+Swift's type system, including an `@autodiff` function type attribute, an
+extension to functions' layout, and new syntax for selecting differentiable
+arguments. 
 
 ## Introduction
 
