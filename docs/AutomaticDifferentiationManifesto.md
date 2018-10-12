@@ -1,8 +1,22 @@
-The Automatic Differentiation Manifesto
-========================================
+First-Class Automatic Differentiation in Swift: The Manifesto
+=============================================================
 
 * Author: [Richard Wei](https://github.com/rxwei)
 * Date: October 2018
+
+This manifesto is written for both the machine learning community and the Swift
+programming language design community.
+
+Table of Contents
+-----------------
+- [Introduction](#Introduction)
+- [Brief History](#Brief-History)
+- [Why?](#Why?)
+- [Vision](#Vision)
+- [System Design](#System-Design)
+- [Applications](#Applications)
+- [Conclusions](#Conclusions)
+- [Acknowledgements](#Acknowledgements)
 
 Introduction
 ------------
@@ -28,8 +42,8 @@ we decided to build AD as a generic feature that is completely orthogonal to the
 TensorFlow support - the TensorFlow Swift library computes gradients using the
 AD features of the Swift language itself.
 
-History of Automatic Differentiation
-------------------------------------
+Brief History
+-------------
 
 Automatic differentiation has been a research topic in scientific computing and
 high-performance computing for nearly half a century. Traditional tools such as
@@ -87,9 +101,11 @@ hardware accelerators ahead of time.
 </p>
 
 The horizontal axis of this diagram may remind people of the trade-offs between
-eager execution and graph building: In eager execution, the model is a subset of
-user code. In graph mode, the model is a data structure representing some code
-in a mini-language. The [Graph Program
+[eager execution](https://www.tensorflow.org/guide/eager) and [computation graph
+building](https://www.tensorflow.org/guide/graphs) in machine learning
+frameworks: In eager execution, the model is a subset of user code. In graph
+mode, the model is a data structure representing some code in a mini-language.
+The [Graph Program
 Extraction](https://github.com/tensorflow/swift/blob/master/docs/GraphProgramExtraction.md)
 technique combines the best of both worlds by reducing graphs to an
 implementation detail managed by the compiler. The vertical axis in the diagram
@@ -97,8 +113,8 @@ adds a second dimension, Automatic Differentiation, where Swift achieves exactly
 the same by making AD a core feature of the language and the compiler.
 
 
-Why Swift needs Automatic Differentiation?
-------------------------------------------
+Why?
+----
 
 Swift is a fast-growing programming language, having gained lots of capabilities
 in creating [desktop and mobile applications](https://developer.apple.com/),
@@ -116,16 +132,29 @@ Vision
 Swift will be world's first general-purpose, differentiable programming
 language.
 
+
+### Differential Operators and Differentiation APIs
+
+The most important aspect of a first-class automatic differentiation
+system is the direct integration of differential operators in the language.
+
 ### Differentiation Styles (Functional vs. Imperative)
+
+In common AD systems, there are two differentiation styles available: functional
+and imperative.
 
 |            | Syntax | Meaning |
 |------------|--------|-------------|
-| Function   | ```let 𝝯f = #gradient(f)```<br/>```𝝯f(x)``` | Differentiating a function |
-| Imperative | ```y = f(x)```<br/>```gradient(of: y, wrt: x)``` | Differentiating code traced through data flow |
+| Functional | `let 𝝯f = #gradient(f)`<br/>`𝝯f(x)` | Differentiating a function |
+| Imperative | `y = f(x)`<br/>`gradient(of: y, wrt: x)` | Differentiating code traced through data flow |
 
+Without getting into implementation details, functional-style AD is transforming
+one function to another, producing a function that takes original
+arguments and returns the partial derivatives evaluated at each argument.
+Imperative-style AD, on the other hand, is a value-value transformation.
 
+ $\dfrac{\partial y}{\partial x}$ and 
 
-### Differential Operators and Differentiation APIs
 
 ### High-Level Machine Learning APIs
 
@@ -137,11 +166,12 @@ System Design
 Differentiation is an operation defined on functions over mathematical objects.
 In machine learning, we often differentiate functions over mathematical values.
 
-#### Revised `Numeric` protocol
+#### A revised [`Numeric`](https://developer.apple.com/documentation/swift/numeric) protocol
 
-The Numeric protocol today refines [`ExpressibleByIntegerLiteral`](https://developer.apple.com/documentation/swift/expressiblebyintegerliteral). This makes sense
-for scalars, but does not work well with high-dimensional data structures such
-as vectors and tensors.
+The Numeric protocol today refines
+[`ExpressibleByIntegerLiteral`](https://developer.apple.com/documentation/swift/expressiblebyintegerliteral).
+This makes sense for scalars, but is not compatible with vector data structures
+due to its 
 
 The Swift team is working towards generalizing the numeric protocols so that
 they will work well with vector libraries. On the Swift forum, I have discussed
@@ -150,10 +180,13 @@ protocol](https://forums.swift.org/t/should-numeric-not-refine-expressiblebyinte
 [Steve Canon](https://forums.swift.org/u/scanon/summary) from the Swift
 community stated that he may propose a weakened protocol for both `Numeric` and
 a vector protocol to refine, and it's likely going to represent a
-[rng](https://en.wikipedia.org/wiki/Rng_(algebra)) and be called `Numeric`.
+[rng](https://en.wikipedia.org/wiki/Rng_(algebra)) and be called `Arithmetic`.
+In order to achieve a sensible design, we will assume this protocol already
+exists so that the vector-related protocols we introduce can refine `Arithmetic`
+to get properties of a rng (`0` and `+`).
 
 ```swift
-protocol Arithmetic : Equatable {
+public protocol Arithmetic : Equatable {
     var zero: Self { get }
     prefix static func + (x: Self) -> Self
     static func + (lhs: Self, rhs: Self) -> Self
@@ -165,8 +198,10 @@ protocol Arithmetic : Equatable {
 }
 ```
 
+The existing `Numeric` will be changed to refine (inherit from) `Arithmetic`.
+
 ```swift
-protocol Numeric : Arithmetic, ExpressibleByIntegerLiteral {
+public protocol Numeric : Arithmetic, ExpressibleByIntegerLiteral {
     associatedtype Magnitude : Comparable, Numeric
     init?<T>(exactly source: T) where T : BinaryInteger
     var magnitude: Magnitude { get }
@@ -210,12 +245,11 @@ public protocol VectorNumeric : Arithmetic {
 
 #### The `Differentiable` protocol
 
-Now, let's dive into differentiability. In basic calculus, differentiating a
-function of type ℝ → ℝ produces a function that maps a point onto its slope,
-having type, and the derivative function also has type ℝ → ℝ. In Swift terms,
-differentiating a function `(Float) -> Float` produces `(Float) -> Float`, and
-differentiating a function `(Float, Float) -> Float` produces `(Float, Float) ->
-(Float, Float)`.
+In basic calculus, differentiating a function of type ℝ → ℝ produces a
+function that maps a point onto its slope, having type, and the derivative
+function also has type ℝ → ℝ. In Swift terms, differentiating a function
+`(Float) -> Float` produces `(Float) -> Float`, and differentiating a function
+`(Float, Float) -> Float` produces `(Float, Float) -> (Float, Float)`.
 
 In vector calculus, differentiation of a function $ℝ^n \rightarrow ℝ^m$ has many forms,
 because there are multiple inputs and multiple outputs. A full evaluation of
@@ -284,10 +318,10 @@ public extension Differentiable where TangentVector == CotangentVector {
 }
 ```
 
-When a differential manifold is a vector space, it's tangent space is usually
+When a differentiable manifold is a vector space, it's tangent space is usually
 itself. In these cases, we simply define `moved(toward:)` as vector addition.
 
-There are two important use cases of such a generalization.
+There are three important use cases of such a generalization.
 
 1. Customizable weight type
    
@@ -309,9 +343,9 @@ There are two important use cases of such a generalization.
 
 2. Quantized training
 
-   In quantized networks, gradients often have a different type than the
-   quantized weight type. Conceptually, a quantized floating point number can be
-   represented as the following struct:
+   Quantization techniques store and calculate numbers in more compact formats,
+   i.e. a fixed-point data type. Conceptually, a quantized tensor for a
+   real-valued `Tensor` can be represented as the following struct:
 
    ```swift
    struct QuantizedTensor<OriginalScalar, QuantizedScalar>
@@ -322,7 +356,12 @@ There are two important use cases of such a generalization.
        var scale: Float
        var zeroPoint: Int32
    }
+   ```
 
+   We can think of a scenario where the developer defines a neural network using
+   quantize tensors, 
+
+   ```swift
    // `QuantizedTensor` is a vector space.
    extension QuantizedTensor : VectorNumeric {
        typealias ScalarElement = OriginalScalar
@@ -332,6 +371,7 @@ There are two important use cases of such a generalization.
    // `QuantizedTensor` is a differentiable manifold.
    extension QuantizedTensor : Differentiable {
        typealias TangentVector = Tensor<OriginalScalar>
+       typealias CotangentVector = Tensor<OriginalScalar>
    }
    ```
 
@@ -344,8 +384,6 @@ There are two important use cases of such a generalization.
 
    Machine learning optimizers.
 
-### Derivative Registration
-
 #### The `@differentiable` attribute
 
 We introduce a declaration attribute `@differentiable` to the language.
@@ -357,17 +395,15 @@ differentiable-attribute = '@differentiable' '(' differentiability ')'
 declaration-attribute-list = differentiable-attribute declaration-attributes
 ```
 
-```ebnf
-
-```
-
 ### Raw Differential Operators
 
 ```ebnf
 forward-differential-operator = '#derivative' | '#chainableDerivative'
-reverse-differential-operator = '#gradient' | '#valueAndGradient' | '#chainableGradient'
+reverse-differential-operator = '#gradient' | '#chainableGradient'
 differential-operator = forward-differential-operator | reverse-differential-operator
-autodiff-expression = differential-operator '(' expression [ ',' 'wrt' ':'  ] ')'
+autodiff-argument-index-specifier = '.' integer-literal
+autodiff-expression = 
+    differential-operator '(' expression [ ',' 'wrt' ':' autodiff-argument-index-specifier ] ')'
 expression = autodiff-expression
 ```
 
@@ -379,6 +415,10 @@ func foo(x: Float) -> Float {
 let dfoo = #derivative(foo)
 let 𝝯foo = #gradient(foo)
 ```
+
+### Differential Registration
+
+We are aiming for an open and extensible system, we made the compiler agnostic of the actual operations - it does not have special knowledge of numeric standard library functions or distinguish between primitive operators and other functions. We recursively determine a function's differentiability based on:
 
 ### Generalized Differentiability
 
@@ -405,7 +445,7 @@ func directionalDerivative<T : Differentiable, R : Differentiable>(
     at x: T, along direction: T.TangentVector, 
     in body: @autodiff(forward) (T) throws -> R
 ) rethrows -> R.TangentVector {
-    return #chainableDerivative(body)(x, direction)
+    return #chainableDerivative(body)(x)(direction)
 }
 
 /// Computes the gradient of the trailing closure at `x`.
@@ -468,32 +508,129 @@ primal computation.
 That said, we would like to provide a way to have the differentiation API return
 the original result directly.
 
-#### Delayed execution of derivative or gradient
-
-In many cases, people would like to customize computations.
+#### Delayed execution of derivative or gradient ([differentials](https://en.wikipedia.org/wiki/Pushforward_(differential)) and [pullbacks](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)))
 
 ```swift
-/// Computes the gradient of the trailing closure at `x`.
-func pushforward<T : Differentiable, R : Differentiable>(
+/// Computes the differential of `body` at `x`.
+func differential<T : Differentiable, R : Differentiable>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
-) rethrows -> (T.TangentVector) -> R.TangentVector {
+) rethrows -> (T.TangentVector) -> (originalResult: T, derivative: R.TangentVector) {
     return { direction in
         directionalDerivative(at: x, along: direction, in: body)
     }
 }
 
-/// Computes the gradient of the trailing closure at `x`.
-func valueAndPullback<T : Differentiable, R : Differentiable>(
+/// Computes the original value of `body(x)` and the pullback (chainable gradient)
+/// at `x`.
+func pullback<T : Differentiable, R : Differentiable>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
-) rethrows -> (value: T, pullback: (R.CotangentVector) -> T.CotangentVector) {
+) rethrows -> (originalResult: T, pullback: (R.CotangentVector) -> T.CotangentVector) {
     return #valueAndPullback(body)(x)
 }
 ```
 
+Examples:
+
+1. Chain forward-mode derivatives freely using differentials.
+
+    ```swift
+    let x = 0.5
+    let (y, df) = differential(at: x) { x in
+        sin(cos(x))
+    }
+    df(1) // df/dx
+    df(#derivative(log)(t)) // df/dt
+    df(derivative(t, log)) // df/dt
+    ```
+
+2. Chain reverse-mode gradients freely using pullbacks.
+
+    ```swift
+    let x = 0.5
+    let (y, df) = valueAndPullback(at: x) { x in
+        cos(sin(x))
+    }
+    
+    ```
+
+#### Customizable differentiation
+
+Some machine learning models require manipulating the gradient with respect to
+certain values, e.g. gradient clipping.
+[Tangent](https://github.com/google/tangent) provides such a feature as a syntax
+extension in Python. Recurrent neural networks often suffer from the "exploding
+gradient" problem, and a typical solution is to force the gradient of an RNN to
+not exceed a certain value by performing gradient clipping.
+
+```swift
+func prediction(for input: Tensor<Float>) -> Float {
+    var prediction = input
+    for _ in 0...5 {
+        // Clip gradient.
+        prediction = prediction.withCustomizedGradient { grad in
+            max(min(grad, 1), -1)
+        }
+        prediction = lstm.prediction(for: input)
+    }
+    return prediction
+}
+```
+
+In hindsight, the `withCustomizedGradient` API must be compiler-known function
+which makes Swift run different code in the gradient computation. However,
+because of the generality of the [differential
+registration](#differential-registration) machanism, this API can be defined
+entirely as a Swift function with no special support from the compiler.
+
+```swift
+public extension Differentiable {
+    @differentiable(reverse, wrt: self, adjoint: adjointCustomizingGradient)
+    func withCustomizedGradient<R>(
+        using body: @nondiff (CotangentVector?) -> CotangentVector?
+    ) -> Self {
+        return value
+    }
+
+    internal func adjointCustomizingGradient(
+        body: (CotangentVector?) -> CotangentVector?,
+        originalResult: Self,
+        adjoint: CotangentVector?
+    ) -> CotangentVector? {
+        return body(adjoint)
+    }
+}
+```
+
+The forward-mode version is just as simple.
+
+```swift
+public extension Differentiable {
+    @differentiable(forward, wrt: self, tangent: tangentCustomizingGradient)
+    func withCustomizedGradient(
+        using body: @nondiff (TangentVector?) -> TangentVector?
+    ) -> Self {
+        return value
+    }
+
+    internal func adjointCustomizingGradient(
+        body: (TangentVector?) -> TangentVector?,
+        tangent: Self?
+    ) -> TangentVector? {
+        return body(tangent)
+    }
+}
+```
+
+
 Applications
 ------------
 
-Conclusion
-----------
+Conclusions
+-----------
 
+Acknowledgements
+----------------
 
+Special thanks to Dan Zheng, Chris Lattner, Marc Rasi, Alex Wiltschko, Bart van
+Merriënboer, Dougal Maclaurin, Matthew Johnson, and Gordon Plotkin for their
+input to the design of this powerful language feature.
