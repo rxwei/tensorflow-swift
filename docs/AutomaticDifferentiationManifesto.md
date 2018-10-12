@@ -1,9 +1,11 @@
-# The Automatic Differentiation Manifesto
+The Automatic Differentiation Manifesto
+========================================
 
 * Author: [Richard Wei](https://github.com/rxwei)
 * Date: October 2018
 
-## Introduction
+Introduction
+------------
 
 Automatic Differentiation (AD), also known as algorithmic differentiation, is a
 family of techniques used to obtain the derivative of a function. Functions can
@@ -18,13 +20,6 @@ Differentiation](https://alexey.radul.name/ideas/2013/introduction-to-automatic-
 and [Automatic Differentiation in Machine Learning: a
 Survey](https://arxiv.org/abs/1502.05767).
 
-Most AD implementations work on a graph representation of a functional tensor
-program, and many have limited expressivity and extensibility. Frameworks based
-on a define-by-run programming model (to support dynamic computation graphs)
-often lack the ability to perform full-program static analysis and
-optimizations, and make it hard to diagnose errors and target hardware
-accelerators ahead of time.
-
 We aim to provide best-in-class AD, including the best optimizations, best error
 messages in failure cases, and the most flexibility and expressivity. To achieve
 this, we built support for AD right into the Swift compiler. Additionally, since
@@ -33,21 +28,129 @@ we decided to build AD as a generic feature that is completely orthogonal to the
 TensorFlow support - the TensorFlow Swift library computes gradients using the
 AD features of the Swift language itself.
 
-## Why Swift needs Automatic Differentiation?
+History of Automatic Differentiation
+------------------------------------
+
+Automatic differentiation has been a research topic in scientific computing and
+high-performance computing for nearly half a century. Traditional tools such as
+[OpenAD](http://www.mcs.anl.gov/OpenAD/),
+[TAPENADE](http://tapenade.inria.fr:8080/tapenade/index.jsp) and
+[ADIFOR](http://www.mcs.anl.gov/research/projects/adifor/) are tools that
+transform existing source code. There are many advanced techniques that improved
+the performance of derivatives written in FORTRAN, but these tools have not
+gained wide adoption in the machine learning community. More recent AD systems
+like [Stalin∇](https://github.com/Functional-AutoDiff/STALINGRAD) (pronounced
+Stalingrad, available in Scheme),
+[DiffSharp](http://diffsharp.github.io/DiffSharp/) (available in F#), and
+[ad](https://hackage.haskell.org/package/ad) (available in Haskell) achieved
+good usability by integrating the differential operator into the language, and
+are equipped with a complete set of AD features (such as forward/reverse, nested
+AD, Hessians, Jacobians, directional derivatives and checkpointing). They
+combine AD closely with functional programming languages.
+
+Researchers in the deep learning community have built many library
+implementations of AD in Python and C++, including
+[Autograd](https://github.com/HIPS/autograd),
+[TensorFlow](http://tensorflow.org/), [Pytorch](http://pytorch.org/), etc. Some
+of these libraries are implemented as a transformation on a standalone DSL (a
+graph) with a closed set of operators. Others are implemented using operator
+overloading directly on a subset of the source language. Although these
+libraries have gained wide adoption, the ones that leverage ahead-of-time AD do
+not expose an easy-to-use programming model, and the ones that have a friendlier
+programming model lack static analysis to perform more optimized AD.
+
+Two recent projects ([Tangent](https://github.com/google/tangent) and
+[Myia](https://github.com/mila-udem/myia)) based their AD upon source code
+transformation (SCT), a technique that was common in advanced AD systems before
+the deep learning era such as
+[Stalin∇](https://github.com/Functional-AutoDiff/STALINGRAD). Both tools parse a
+Python subset into ASTs and transform a function to its derivatives either in
+AST or in a functional IR. These two projects fall into a category in deep
+learning tools that was previously underexplored: ahead-of-time
+differentiation + "model as code", as shown in the following diagram (cite:
+[Tangent](https://github.com/google/tangent)). While these tools are pushing the
+boundaries of Python, other research projects like [DLVM](http://dlvm.org/)
+experimented with SCT AD directly on a compiler IR that's analogous to the
+[Swift Intermediate
+Language](https://github.com/apple/swift/blob/master/docs/SIL.rst) (SIL).
+
+Most existing AD implementations work on a graph representation of a functional
+tensor program, and many of them have limited expressivity and extensibility.
+Frameworks based on a define-by-run programming model (to support dynamic
+computation graphs) often lack the ability to perform full-program static
+analysis and optimizations, and make it hard to diagnose errors and target
+hardware accelerators ahead of time.
+
+<p align="center">
+  <img src="images/AutomaticDifferentiation-Approaches.png?raw=true"
+       alt="Automatic differentiation approaches."/>
+</p>
+
+The horizontal axis of this diagram may remind people of the trade-offs between
+eager execution and graph building: In eager execution, the model is a subset of
+user code. In graph mode, the model is a data structure representing some code
+in a mini-language. The [Graph Program
+Extraction](https://github.com/tensorflow/swift/blob/master/docs/GraphProgramExtraction.md)
+technique combines the best of both worlds by reducing graphs to an
+implementation detail managed by the compiler. The vertical axis in the diagram
+adds a second dimension, Automatic Differentiation, where Swift achieves exactly
+the same by making AD a core feature of the language and the compiler.
 
 
-## Vision
+Why Swift needs Automatic Differentiation?
+------------------------------------------
 
-By integrating automatic differentiation directly into the programming language.
+Swift is a fast-growing programming language, having gained lots of capabilities
+in creating [desktop and mobile applications](https://developer.apple.com/),
+system software, and [server software](https://swift.org/server/). Recently, the
+[Swift for TensorFlow](https://github.com/tensorflow/swift) project brought the
+full power of a machine learning framework into the Swift programming language,
+and the community began to create an ecosystem for Swift in machine learning,
+including [Python
+Interoperability](https://github.com/tensorflow/swift/blob/master/docs/PythonInteroperability.md)
+and [Jupyter Notebook support](https://github.com/google/swift-jupyter).
 
-## System Design
+Vision
+------
+
+Swift will be world's first general-purpose, differentiable programming
+language.
+
+### Differentiation Styles (Functional vs. Imperative)
+
+|            | Syntax | Meaning |
+|------------|--------|-------------|
+| Function   | ```let 𝝯f = #gradient(f)```<br/>```𝝯f(x)``` | Differentiating a function |
+| Imperative | ```y = f(x)```<br/>```gradient(of: y, wrt: x)``` | Differentiating code traced through data flow |
+
+
+
+### Differential Operators and Differentiation APIs
+
+### High-Level Machine Learning APIs
+
+System Design
+-------------
 
 ### Differentiable Types
 
+Differentiation is an operation defined on functions over mathematical objects.
+In machine learning, we often differentiate functions over mathematical values.
+
 #### Revised `Numeric` protocol
 
-The Swift team will introduce that mathematically represents a
-[rng](https://en.wikipedia.org/wiki/Rng_(algebra)).
+The Numeric protocol today refines [`ExpressibleByIntegerLiteral`](https://developer.apple.com/documentation/swift/expressiblebyintegerliteral). This makes sense
+for scalars, but does not work well with high-dimensional data structures such
+as vectors and tensors.
+
+The Swift team is working towards generalizing the numeric protocols so that
+they will work well with vector libraries. On the Swift forum, I have discussed
+the [fundamental blocker for vector types to conform to the existing `Numeric`
+protocol](https://forums.swift.org/t/should-numeric-not-refine-expressiblebyintegerliteral).
+[Steve Canon](https://forums.swift.org/u/scanon/summary) from the Swift
+community stated that he may propose a weakened protocol for both `Numeric` and
+a vector protocol to refine, and it's likely going to represent a
+[rng](https://en.wikipedia.org/wiki/Rng_(algebra)) and be called `Numeric`.
 
 ```swift
 protocol Arithmetic : Equatable {
@@ -70,6 +173,11 @@ protocol Numeric : Arithmetic, ExpressibleByIntegerLiteral {
 }
 ```
 
+#### The `VectorNumeric` protocol
+
+After we make `Arithmetic` suitable for machine learning use cases, we can then
+define a protocol that generalizes vectors. A vector space is a ring without a
+multiplicative identity.
 
 ```swift
 /// A type that represents an unranked vector space. Values of this type are
@@ -100,10 +208,38 @@ public protocol VectorNumeric : Arithmetic {
 }
 ```
 
-
 #### The `Differentiable` protocol
 
-Differentiable manifolds are awesome.
+Now, let's dive into differentiability. In basic calculus, differentiating a
+function of type ℝ → ℝ produces a function that maps a point onto its slope,
+having type, and the derivative function also has type ℝ → ℝ. In Swift terms,
+differentiating a function `(Float) -> Float` produces `(Float) -> Float`, and
+differentiating a function `(Float, Float) -> Float` produces `(Float, Float) ->
+(Float, Float)`.
+
+In vector calculus, differentiation of a function $ℝ^n \rightarrow ℝ^m$ has many forms,
+because there are multiple inputs and multiple outputs. A full evaluation of
+derivatives of each output at each input will result into the following matrix,
+called a [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant).
+
+<p align="center">
+  <img src="https://wikimedia.org/api/rest_v1/media/math/render/svg/74e93aa903c2695e45770030453eb77224104ee4"
+       alt="Automatic differentiation approaches."/>
+</p>
+
+Jacobian calculation is very computationally expensive. In practice, we care
+about 
+
+
+
+In order for values of a type to be differentiable, the type has to satisfy the
+following requirements:
+
+1. Derivatives form a vector space - it has `0`, `1`, and addition (`+`).
+2. It knows how to apply a tangent vector onto a value, moving the value along
+   that tangent vector.
+
+Here's the finished `Differentiable` protocol.
 
 ```swift
 /// A type that mathematically represents a differentiable manifold whose
@@ -112,49 +248,107 @@ Differentiable manifolds are awesome.
 /// In automatic differentiation, differentiation will produce a Jacobian whose
 /// elements are of `Tangent` type.
 public protocol Differentiable {
-  /// The tangent vector space of this differentiable manifold.
-  associatedtype TangentVector : VectorNumeric
-    where TangentVector.ScalarElement : FloatingPoint
-  /// The cotangent space of this differentiable manifold.
-  associatedtype CotangentVector : VectorNumeric
-    where TangentVector.ScalarElement : FloatingPoint
+    /// The tangent vector space of this differentiable manifold.
+    associatedtype TangentVector : VectorNumeric
+        where TangentVector.ScalarElement : FloatingPoint
+    /// The cotangent space of this differentiable manifold.
+    associatedtype CotangentVector : VectorNumeric
+        where TangentVector.ScalarElement : FloatingPoint
 
-  /// Returns `self` moved along the value space towards the given tangent
-  /// vector. In Riemannian geometry (mathematics), this represents an
-  /// exponential map.
-  func moved(toward direction: TangentVector) -> Self
+    /// Returns `self` moved along the value space towards the given tangent
+    /// vector. In Riemannian geometry (mathematics), this represents an
+    /// exponential map.
+    func moved(toward direction: TangentVector) -> Self
   
-  /// Convert a cotangent vector to its corresponding tangent vector.
-  func tangentVector(from cotangent: CotangentVector) -> TangentVector
+    /// Convert a cotangent vector to its corresponding tangent vector.
+    func tangentVector(from cotangent: CotangentVector) -> TangentVector
+}
+```
+
+When the tangent vector of a differentiable manifold is equal to its cotangent
+vector, we can simply define the conversion from cotangent to tangent as an
+identity function.
+
+```swift
+public extension Differentiable
+    where Self : VectorNumeric, TangentVector == Self {
+    func moved(toward direction: TangentVector) -> Self {
+        return self + direction
+    }
+}
+
+public extension Differentiable where TangentVector == CotangentVector {
+    func tangentVector(from cotangent: CotangentVector) -> TangentVector {
+        return cotangent
+    }
 }
 ```
 
 When a differential manifold is a vector space, it's tangent space is usually
-itself. In these cases, we can define `moved(toward:)` as addition.
+itself. In these cases, we simply define `moved(toward:)` as vector addition.
 
-```swift
-public extension Differentiable
-  where Self : VectorNumeric, TangentVector == Self {
-  func moved(toward direction: TangentVector) -> Self {
-    return self + direction
-  }
-}
-```
+There are two important use cases of such a generalization.
 
-```swift
-public extension Differentiable where TangentVector == CotangentVector {
-  func tangentVector(from cotangent: CotangentVector) -> TangentVector {
-    return cotangent
-  }
-}
-```
+1. Customizable weight type
+   
+   Orthogonal weight matrixes have shown advantages in neural network training
+   [[1]](https://arxiv.org/abs/1702.00071)
+   [[2]](https://arxiv.org/abs/1709.06079). When differentiating through these
+   networks, gradients with respect to weights will no long stay orthogonal -
+   instead, they are skew-symmetric matrices. While we can represent both
+   orthogonal matrices and skew-symmetric matrices as values of a `Matrix` or
+   `Tensor` type and programmatically ensure its orthogonality, some researchers
+   have been seeking a way to represent this natively in the type ystem of a
+   programming language and still have AD produce the correct derivative.
+
+   This, in fact, has been exactly what people have been doing when writing machine
+   learning optimizers, but the conversion has often been implicit because in most
+   cases the tangent space is equal to the cotangent space in a vector space
+   scenario. With this generalization, people will be able to write general
+   optimizers that is both practically general and mathematically correct.
+
+2. Quantized training
+
+   In quantized networks, gradients often have a different type than the
+   quantized weight type. Conceptually, a quantized floating point number can be
+   represented as the following struct:
+
+   ```swift
+   struct QuantizedTensor<OriginalScalar, QuantizedScalar>
+       where OriginalScalar: AccelerableByTensorFlow & FloatingPoint,
+             QuantizedScalar: AccelerableByTensorFlow & FixedWidthInteger {
+       var data: Tensor<Int8>
+       var range: Range<Float>
+       var scale: Float
+       var zeroPoint: Int32
+   }
+
+   // `QuantizedTensor` is a vector space.
+   extension QuantizedTensor : VectorNumeric {
+       typealias ScalarElement = OriginalScalar
+       // Implementations of `+` and `*` are omitted.
+   }
+
+   // `QuantizedTensor` is a differentiable manifold.
+   extension QuantizedTensor : Differentiable {
+       typealias TangentVector = Tensor<OriginalScalar>
+   }
+   ```
+
+   One would expect to differentiate a function of type `(QuantizedTensor<Float,
+   Int8>) -> U` to train parameters. However, we never want gradients at each
+   parameter to be a quantized number - instead, the range and zero point are
+   often recomputed for each parameter update.
+
+3. Generic optimizers
+
+   Machine learning optimizers.
 
 ### Derivative Registration
 
 #### The `@differentiable` attribute
 
-We introduce a declaration attribute `@differentiable` to the language. This
-attribute can be ap
+We introduce a declaration attribute `@differentiable` to the language.
 
 ```ebnf
 differentiation-mode = 'forward' | 'reverse'
@@ -190,9 +384,11 @@ let 𝝯foo = #gradient(foo)
 
 Mathematically, differentiability is a notion defined around functions.
 
-### Differentiation API
+### Differentiation APIs
 
-
+It is a common misconception that differential operators like `#derivative` and
+`#gradient` are APIs targeting general machine learning and scientific computing
+use cases.
 
 #### Directional derivatives and gradients
 
@@ -274,6 +470,8 @@ the original result directly.
 
 #### Delayed execution of derivative or gradient
 
+In many cases, people would like to customize computations.
+
 ```swift
 /// Computes the gradient of the trailing closure at `x`.
 func pushforward<T : Differentiable, R : Differentiable>(
@@ -292,6 +490,10 @@ func valueAndPullback<T : Differentiable, R : Differentiable>(
 }
 ```
 
-## Applications
+Applications
+------------
 
-## Conclusion
+Conclusion
+----------
+
+
