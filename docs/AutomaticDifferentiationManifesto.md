@@ -10,10 +10,14 @@ programming language design community.
 Table of Contents
 -----------------
 - [Introduction](#Introduction)
+- [Why should Swift incorporate Automatic Differentiation?](#Why-1)
+- [Why should Automatic Differentiation be language-integrated?](#Why-2)
 - [Brief History](#Brief-History)
-- [Why?](#Why?)
 - [Vision](#Vision)
-- [System Design](#System-Design)
+- [System Design (Part 1): Basic Differentiation](#Basic-Differentiation)
+- [System Design (Part 2): Generalized Differentiability](#Generalized-Differentiability)
+- [System Design (Part 3): Advanced Types for Differentiation](#Advanced-Types-for-Differentiation)
+- [System Design (Part 4): Advanced Differential Operators](#Advanced-Differential-Operators)
 - [Conclusions](#Conclusions)
 - [Acknowledgements](#Acknowledgements)
 
@@ -741,7 +745,7 @@ can decide whether to `break` from the loop based on the return value from that
 API.
 
 Conclusions
------------
+-------------
 
 Acknowledgements
 ----------------
