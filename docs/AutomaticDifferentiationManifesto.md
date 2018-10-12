@@ -14,7 +14,6 @@ Table of Contents
 - [Why?](#Why?)
 - [Vision](#Vision)
 - [System Design](#System-Design)
-- [Applications](#Applications)
 - [Conclusions](#Conclusions)
 - [Acknowledgements](#Acknowledgements)
 
@@ -63,12 +62,24 @@ are equipped with a complete set of AD features (such as forward/reverse, nested
 AD, Hessians, Jacobians, directional derivatives and checkpointing). They
 combine AD closely with functional programming languages.
 
-Researchers in the deep learning community have built many library
+Researchers in the machine learning community have built many library
 implementations of AD in Python and C++, including
 [Autograd](https://github.com/HIPS/autograd),
-[TensorFlow](http://tensorflow.org/), [Pytorch](http://pytorch.org/), etc. Some
-of these libraries are implemented as a transformation on a standalone DSL (a
-graph) with a closed set of operators. Others are implemented using operator
+[TensorFlow](http://tensorflow.org/), [Pytorch](http://pytorch.org/), etc. As
+Automatic Differentiation is an integral part of any machine learning framework,
+traditional designs and implementations of AD have some limitations. Here are
+four kinds of existing approaches to automatic differentiation: 
+
+| Approach to Automatic Differentiation               | Strength               | Limitation   |
+| --------------------------------------------------- | ---------------------- | ------------ |
+| Tracing + interpreting operators                    | Minimal implementation |              |
+| Tracing + transforming traced program               |                        |              |
+| Metaprogramming + interpreting operators            |                        |              |
+| Metaprogramming + transforming program              |                        |              |
+
+
+Some of these libraries are implemented as a transformation on a standalone DSL
+(a graph) with a closed set of operators. Others are implemented using operator
 overloading directly on a subset of the source language. Although these
 libraries have gained wide adoption, the ones that leverage ahead-of-time AD do
 not expose an easy-to-use programming model, and the ones that have a friendlier
@@ -118,16 +129,34 @@ Why?
 ----
 
 Swift is a new programming language in the machine learning space, and it has a
-special taste. The recently announced [Swift for
+special taste. Recently, the [Swift for
 TensorFlow](https://github.com/tensorflow/swift) project brought the full power
 of a machine learning framework into the Swift programming language, and the
-community began to create an ecosystem for Swift in machine learning, including
-[Python
-Interoperability](https://github.com/tensorflow/swift/blob/master/docs/PythonInteroperability.md)
-and [Jupyter Notebook support](https://github.com/google/swift-jupyter).
+machine learning community began to envision a world where mathematical
+computation gains most first-class language support. Many articles have written
+about Swift's potential impact in the machine learning space as a better
+general-purpose language than Python that can serve their needs better, e.g. [Why
+data scientists should start learning
+Swift](https://heartbeat.fritz.ai/why-data-scientists-should-start-learning-swift-66c3643e0d0d).
 
-[Why data scientists should start learning
-Swift](https://heartbeat.fritz.ai/why-data-scientists-should-start-learning-swift-66c3643e0d0d)
+
+During our development, we've prototyped two major extensions to the Swift
+compiler in the ['tensorflow'
+branch](https://github.com/apple/swift/tree/tensorflow).
+
+- [Automatic
+  Differentiation](https://github.com/tensorflow/swift/blob/master/docs/AutomaticDifferentiation.md):
+  An extension to the syntax, type system, standard library, compiler
+  transformations and ABI that makes Swift a first-class differentiable
+  programming language.
+- [Graph Program Extraction](https://github.com/tensorflow/swift/blob/master/docs/GraphProgramExtraction.md):
+  An extension to the compiler that efficiently compiles control flow and data flow over
+  TensorFlow's `Tensor` type and make the language talk to TensorFlow natively.
+
+While Graph Program Extraction is specific to TensorFlow support, Automatic
+Differentiation is completely independent of TensorFlow and has been designed as
+a fully general language feature.
+
 
 Vision
 ------
@@ -688,7 +717,6 @@ This API supports all general gradient manipulation tasks in machine learning
 optimization. For example, [stop
 gradient](https://www.tensorflow.org/api_docs/python/tf/stop_gradient) can be
 implemented simply by `break`ing from the loop.
-
 ```swift
 var prediction = input
 for _ in 0...5 {
@@ -707,8 +735,10 @@ for _ in 0...5 {
 }
 ```
 
-Applications
-------------
+Setting a mutable flag is not the most user-friendly way. We can create an API
+that wraps `withCustomizedDerivative(using:)` and returns a `Bool`, so that later code
+can decide whether to `break` from the loop based on the return value from that
+API.
 
 Conclusions
 -----------
