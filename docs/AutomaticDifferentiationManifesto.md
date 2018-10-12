@@ -144,13 +144,39 @@ language.**
 
 ### Differential Operators and Differentiation APIs
 
+In basic calculus, differentiating a function of type ℝ → ℝ produces a
+function that maps a point onto its slope, having type, and the derivative
+function also has type ℝ → ℝ. In Swift terms, differentiating a function
+`(Float) -> Float` produces `(Float) -> Float`, and differentiating a function
+`(Float, Float) -> Float` produces `(Float, Float) -> (Float, Float)`.
+
+In vector calculus, differentiation of a function $ℝ^n \rightarrow ℝ^m$ has many forms,
+because there are multiple inputs and multiple outputs. A full evaluation of
+derivatives of each output at each input will result into the following matrix,
+called a [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant).
+
+<p align="center">
+  <img src="https://wikimedia.org/api/rest_v1/media/math/render/svg/74e93aa903c2695e45770030453eb77224104ee4"
+       alt="Automatic differentiation approaches."/>
+</p>
+
+Calculating the Jacobian of a function is very computationally expensive. In
+practice, we often care more about two kinds of byproducts of Jacobian
+calculation: the vector-Jacobian products (a.k.a. gradient) and the vector-Jacobian
+products (a.k.a. directional derivatives). In these terms, "vector" refers to a
+forward-propagated derivative that's to be chained with the function's
+[differential](https://en.wikipedia.org/wiki/Pushforward_(differential)), and a
+back-propagated gradient that's to be chained with the function's
+[pullback](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)),
+respectively.
+
 The most important aspect of a first-class automatic differentiation
 system is the direct integration of differential operators in the language.
 
 ### Differentiation Styles (Functional vs. Imperative)
 
-In common AD systems, there are two differentiation styles available: functional
-and imperative.
+In common AD systems for machine learning, there are two differentiation styles
+available: functional and imperative.
 
 |            | Syntax | Meaning |
 |------------|--------|-------------|
@@ -160,9 +186,7 @@ and imperative.
 Without getting into implementation details, functional-style AD is transforming
 one function to another, producing a function that takes original
 arguments and returns the partial derivatives evaluated at each argument.
-Imperative-style AD, on the other hand, is a value-value transformation.
-
- $\dfrac{\partial y}{\partial x}$ and 
+Imperative-style AD, on the other hand, is a value-value transformation. In mathematics, we use both notations, i.e. both 
 
 
 ### High-Level Machine Learning APIs
@@ -219,9 +243,14 @@ public protocol Numeric : Arithmetic, ExpressibleByIntegerLiteral {
 
 #### The `VectorNumeric` protocol
 
-After we make `Arithmetic` suitable for machine learning use cases, we can then
-define a protocol that generalizes vectors. A vector space is a ring without a
-multiplicative identity.
+After we make `Arithmetic` suitable for machine learning use cases, we can
+define a protocol that generalizes vectors. Mathematically, a vector space is a
+rng -- a ring without a multiplicative identity. We represent vector spaces
+through the `VectorNumeric` protocol as follows. `ScalarElement` is the type of
+the elements of this vector space -- the field which the vector space is over.
+`Dimensionality` is the dimensionality of this vector space, which is
+customizable. The initializer takes a value of the `ScalarElement` type and a
+`Dimensionality` and returns a vector of the specified dimensionality.
 
 ```swift
 /// A type that represents an unranked vector space. Values of this type are
@@ -248,44 +277,24 @@ public protocol VectorNumeric : Arithmetic {
   ///   - dimensionality: the dimensionality
   init(repeating repeatedValue: ScalarElement, dimensionality: Dimensionality)
 
+  /// The dimensionality of this vector.
+  var dimensionality: Dimensionality { get }
+
+  /// Returns the scalar product of the vector.
   static func * (scale: ScalarElement, value: Self) -> Self
 }
 ```
 
 #### The `Differentiable` protocol
 
-In basic calculus, differentiating a function of type ℝ → ℝ produces a
-function that maps a point onto its slope, having type, and the derivative
-function also has type ℝ → ℝ. In Swift terms, differentiating a function
-`(Float) -> Float` produces `(Float) -> Float`, and differentiating a function
-`(Float, Float) -> Float` produces `(Float, Float) -> (Float, Float)`.
-
-In vector calculus, differentiation of a function $ℝ^n \rightarrow ℝ^m$ has many forms,
-because there are multiple inputs and multiple outputs. A full evaluation of
-derivatives of each output at each input will result into the following matrix,
-called a [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant).
-
-<p align="center">
-  <img src="https://wikimedia.org/api/rest_v1/media/math/render/svg/74e93aa903c2695e45770030453eb77224104ee4"
-       alt="Automatic differentiation approaches."/>
-</p>
-
-Calculating the Jacobian of a function is very computationally expensive. In
-practice, we often care more about two kinds of byproducts of Jacobian
-calculation: the vector-Jacobian products (a.k.a. gradient), and vector-Jacobian
-products (a.k.a. directional derivatives). In these terms, "vector" refers to a
-forward-propagated derivative that's to be chained with the function's
-[differential](https://en.wikipedia.org/wiki/Pushforward_(differential)), and a
-back-propagated gradient that's to be chained with the function's
-[pullback](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)),
-respectively.
-
 In order for values of a type to be differentiable, the type has to satisfy the
 following requirements:
 
 1. Derivatives form a vector space - it has `0`, `1`, and addition (`+`).
-2. It knows how to apply a tangent vector onto a value, moving the value along
-   that tangent vector.
+2. Derivatives can be applied to perform
+   [optimizations](https://en.wikipedia.org/wiki/Mathematical_optimization).
+
+In mathematics, this is usually generalized by two kinds of 
 
 Here's the finished `Differentiable` protocol.
 
@@ -304,8 +313,8 @@ public protocol Differentiable {
         where TangentVector.ScalarElement : FloatingPoint
 
     /// Returns `self` moved along the value space towards the given tangent
-    /// vector. In Riemannian geometry (mathematics), this represents an
-    /// exponential map.
+    /// vector. In Riemannian geometry (mathematics), this is usually equivalent
+    /// to retraction or exponential map.
     func moved(toward direction: TangentVector) -> Self
   
     /// Convert a cotangent vector to its corresponding tangent vector.
@@ -313,21 +322,29 @@ public protocol Differentiable {
 }
 ```
 
+Why do we need a customizable `TangentVector` and a custom `CotangentVector`?
+While most machine learning frameworks model derivatives as 
+
 When the tangent vector of a differentiable manifold is equal to its cotangent
-vector, we can simply define the conversion from cotangent to tangent as an
-identity function.
+vector, we can simply provide a default implementation of
+`tangentVector(from:)`, which is just the identity function.
+
+```swift
+public extension Differentiable where TangentVector == CotangentVector {
+    func tangentVector(from cotangent: CotangentVector) -> TangentVector {
+        return cotangent
+    }
+}
+```
+
+When a differentiable manifold is a vector space, and when the tangent space
+equals manifold itself, its exponential ma
 
 ```swift
 public extension Differentiable
     where Self : VectorNumeric, TangentVector == Self {
     func moved(toward direction: TangentVector) -> Self {
         return self + direction
-    }
-}
-
-public extension Differentiable where TangentVector == CotangentVector {
-    func tangentVector(from cotangent: CotangentVector) -> TangentVector {
-        return cotangent
     }
 }
 ```
@@ -422,11 +439,12 @@ declaration-attribute = differentiable-attribute
 
 ### Raw Differential Operators
 
-Now that we have talked about differentiable types and differential registration
+Now that we have talked about differentiable types and differential
+registration, it's time to move to the core differentiation API.
 
 ```ebnf
-forward-differential-operator = '#derivative' | '#chainableDerivative'
-reverse-differential-operator = '#gradient' | '#chainableGradient'
+forward-differential-operator = '#derivative'
+reverse-differential-operator = '#gradient'
 differential-operator = forward-differential-operator | reverse-differential-operator
 autodiff-argument-index-specifier = '.' integer-literal
 autodiff-expression = 
@@ -439,19 +457,28 @@ Example:
 func f(_ x: Float, _ y: Float) -> Float {
     return sin(x + y)
 }
-#derivative(f) // df/d(x,y) : (Float, Float) -> (Float, Float)
-#gradient(f) // 𝝯foo : (Float, Float) -> (Float, Float)
-#chainableDerivative(f) // (Float, Float) -> (Float) -> (Float, (Float, Float))
-                        //  ^~~~~~~~~~~~      ^~~~~      ^~~~~   ^~~~~~~~~~~~
-                        //  original args     seed       result  derivative
-#chainableGradient(f) // (Float, Float) -> (Float, (Float) -> (Float, Float))
-                      //  ^~~~~~~~~~~~      ^~~~~   ^~~~~      ^~~~~~~~~~~~
-                      //  original args     result  seed       gradient
+#derivative(f) // (Float, Float) -> (Float?) -> (Float, (Float, Float))
+               //  ^~~~~~~~~~~~      ^~~~~      ^~~~~   ^~~~~~~~~~~~
+               //  original args     seed       result  derivative
+#gradient(f) // (Float, Float) -> (Float, (Float?) -> (Float, Float))
+             //  ^~~~~~~~~~~~      ^~~~~   ^~~~~      ^~~~~~~~~~~~
+             //  original args     result  seed       gradient
 ```
 
 ### Generalized Differentiability
 
-Mathematically, differentiability is a notion defined around functions.
+Automatic differentiation relies on the source code of a function to be able to
+differentiate it. Differential operators like `#gradient` trigger the
+differentiation of a function, and the differentiability of the function is
+determined as differentiation goes. This simple system works perfectly when
+differentiating concrete functions defined in a local module, but does not allow
+differentiation of opaque function values or methods required by protocols.
+While the former is not a struct requirement in machine learning systems, the
+latter fundamentally obstructs composable, protocol-oriented machine learning
+APIs. This document describes a new formalization of differentiability in
+Swift's type system, including an `@autodiff` function type attribute, an
+extension to functions' layout, and new syntax for selecting differentiable
+arguments. 
 
 ### Differentiation APIs
 
@@ -540,14 +567,16 @@ the original result directly.
 
 #### Delayed execution of derivative or gradient ([differentials](https://en.wikipedia.org/wiki/Pushforward_(differential)) and [pullbacks](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)))
 
+In some reinforcement learning (RL) tasks, it is often required to compute the
+forward pass of a neural network, hand it over to other functions, wait for
+the adjoint to be back-propagated, and then compute the backward computation.
+
 ```swift
 /// Computes the differential of `body` at `x`.
 func differential<T : Differentiable, R : Differentiable>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
 ) rethrows -> (T.TangentVector) -> (originalResult: T, derivative: R.TangentVector) {
-    return { direction in
-        directionalDerivative(at: x, along: direction, in: body)
-    }
+    return #gradient(body)(x)
 }
 
 /// Computes the original value of `body(x)` and the pullback (chainable gradient)
@@ -561,19 +590,19 @@ func pullback<T : Differentiable, R : Differentiable>(
 
 Examples:
 
-1. Chain forward-mode derivatives freely using differentials.
+1. Chain directional derivatives freely using differentials.
 
     ```swift
     let x = 0.5
-    let (y, df) = differential(at: x) { x in
+    let df = differential(at: x) { x in
         sin(cos(x))
     }
-    df(1) // df/dx
-    df(#derivative(log)(t)) // df/dt
-    df(derivative(t, log)) // df/dt
+    df(1) // (f(x), df/dx)
+    df(#derivative(log)(t)) // (f(x), df/dt)
+    df(derivative(at: t, in: log)) // (f(x), df/dt)
     ```
 
-2. Chain reverse-mode gradients freely using pullbacks.
+2. Chain gradients freely using pullbacks.
 
     ```swift
     let x = 0.5
@@ -581,6 +610,9 @@ Examples:
         cos(sin(x))
     }
     
+    df(1) // dy/dx
+    df(#gradient(log)(t)) // dy/dt
+    df(gradient(at: t, in: log)) // dy/dt
     ```
 
 #### Customizable differentiation
@@ -606,11 +638,12 @@ func prediction(for input: Tensor<Float>) -> Float {
 }
 ```
 
-In hindsight, the `withCustomizedGradient` API must be compiler-known function
-which makes Swift run different code in the gradient computation. However,
-because of the generality of the [differential
-registration](#differential-registration) machanism, this API can be defined
-entirely as a Swift function with no special support from the compiler.
+The `withCustomizedGradient` API looks like a compiler-known function which makes
+Swift run customized gradient computation. However, because of the
+generality of the [differential registration](#differential-registration)
+machanism, this API can be defined entirely as a Swift function with no special
+support from the compiler. Here's the implementation of the gradient
+customization API.
 
 ```swift
 public extension Differentiable {
@@ -618,7 +651,7 @@ public extension Differentiable {
     func withCustomizedGradient<R>(
         using body: @nondiff (CotangentVector?) -> CotangentVector?
     ) -> Self {
-        return value
+        return self
     }
 
     internal func adjointCustomizingGradient(
@@ -631,12 +664,12 @@ public extension Differentiable {
 }
 ```
 
-The forward-mode version is just as simple.
+The derivative customization API is just as simple.
 
 ```swift
 public extension Differentiable {
     @differentiable(forward, wrt: self, tangent: tangentCustomizingGradient)
-    func withCustomizedGradient(
+    func withCustomizedDerivative(
         using body: @nondiff (TangentVector?) -> TangentVector?
     ) -> Self {
         return value
@@ -651,6 +684,28 @@ public extension Differentiable {
 }
 ```
 
+This API supports all general gradient manipulation tasks in machine learning
+optimization. For example, [stop
+gradient](https://www.tensorflow.org/api_docs/python/tf/stop_gradient) can be
+implemented simply by `break`ing from the loop.
+
+```swift
+var prediction = input
+for _ in 0...5 {
+    // Stop gradient when necessary.
+    var shouldStop = false
+    prediction = prediction.withCustomizedGradient { grad in
+        if grad < lowerBound {
+            shouldStop = true
+        }
+        return grad
+    }
+    if shouldStop {
+        break
+    }
+    prediction = lstm.prediction(for: input)
+}
+```
 
 Applications
 ------------
@@ -661,6 +716,7 @@ Conclusions
 Acknowledgements
 ----------------
 
-Special thanks to Dan Zheng, Chris Lattner, Marc Rasi, Alex Wiltschko, Bart van
-Merriënboer, Dougal Maclaurin, Matthew Johnson, and Gordon Plotkin for their
-input to the design of this powerful language feature.
+Special thanks to Dan Zheng, Alex Wiltschko, Bart van Merriënboer, Dougal
+Maclaurin, Matthew Johnson, Gordon Plotkin, Tim Harley, Malcolm Reynolds, Marc
+Rasi, and Chris Lattner for their input to the design of this powerful language
+feature.
