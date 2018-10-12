@@ -30,6 +30,7 @@ reverse direction, called reverse-mode AD. Reverse-mode AD computes
 vector-Jacobian products, i.e. partial derivatives with respect to each input
 parameter, and it has become a prerequisite for implementing gradient-based
 learning methods. AD has a rich background, here are some great introductions:
+[Introduction to Automatic
 Differentiation](https://alexey.radul.name/ideas/2013/introduction-to-automatic-differentiation/)
 and [Automatic Differentiation in Machine Learning: a
 Survey](https://arxiv.org/abs/1502.05767).
@@ -116,22 +117,30 @@ the same by making AD a core feature of the language and the compiler.
 Why?
 ----
 
-Swift is a fast-growing programming language, having gained lots of capabilities
-in creating [desktop and mobile applications](https://developer.apple.com/),
-system software, and [server software](https://swift.org/server/). Recently, the
-[Swift for TensorFlow](https://github.com/tensorflow/swift) project brought the
-full power of a machine learning framework into the Swift programming language,
-and the community began to create an ecosystem for Swift in machine learning,
-including [Python
+Swift is a new programming language in the machine learning space, and it has a
+special taste. The recently announced [Swift for
+TensorFlow](https://github.com/tensorflow/swift) project brought the full power
+of a machine learning framework into the Swift programming language, and the
+community began to create an ecosystem for Swift in machine learning, including
+[Python
 Interoperability](https://github.com/tensorflow/swift/blob/master/docs/PythonInteroperability.md)
 and [Jupyter Notebook support](https://github.com/google/swift-jupyter).
+
+[Why data scientists should start learning
+Swift](https://heartbeat.fritz.ai/why-data-scientists-should-start-learning-swift-66c3643e0d0d)
 
 Vision
 ------
 
-Swift will be world's first general-purpose, differentiable programming
-language.
+We believe that Swift will be a great platform for numerics and machine
+learning.
 
+We believe machine learning is so important today that it deserves first-class
+language capabilities. Such capability need not be specialized for machine
+learning uses cases, but will be driven by practical requirements nad 
+
+**Swift will be world's first statically typed, general-purpose differentiable programming
+language.**
 
 ### Differential Operators and Differentiation APIs
 
@@ -261,10 +270,15 @@ called a [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinan
        alt="Automatic differentiation approaches."/>
 </p>
 
-Jacobian calculation is very computationally expensive. In practice, we care
-about 
-
-
+Calculating the Jacobian of a function is very computationally expensive. In
+practice, we often care more about two kinds of byproducts of Jacobian
+calculation: the vector-Jacobian products (a.k.a. gradient), and vector-Jacobian
+products (a.k.a. directional derivatives). In these terms, "vector" refers to a
+forward-propagated derivative that's to be chained with the function's
+[differential](https://en.wikipedia.org/wiki/Pushforward_(differential)), and a
+back-propagated gradient that's to be chained with the function's
+[pullback](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)),
+respectively.
 
 In order for values of a type to be differentiable, the type has to satisfy the
 following requirements:
@@ -335,17 +349,11 @@ There are three important use cases of such a generalization.
    have been seeking a way to represent this natively in the type ystem of a
    programming language and still have AD produce the correct derivative.
 
-   This, in fact, has been exactly what people have been doing when writing machine
-   learning optimizers, but the conversion has often been implicit because in most
-   cases the tangent space is equal to the cotangent space in a vector space
-   scenario. With this generalization, people will be able to write general
-   optimizers that is both practically general and mathematically correct.
-
 2. Quantized training
 
    Quantization techniques store and calculate numbers in more compact formats,
    i.e. a fixed-point data type. Conceptually, a quantized tensor for a
-   real-valued `Tensor` can be represented as the following struct:
+   real-valued `Tensor` can be defined as the following struct:
 
    ```swift
    struct QuantizedTensor<OriginalScalar, QuantizedScalar>
@@ -358,8 +366,9 @@ There are three important use cases of such a generalization.
    }
    ```
 
-   We can think of a scenario where the developer defines a neural network using
-   quantize tensors, 
+   We can think of a scenario where the developer defines a neural network as a
+   function whose parameters are of type `QuantizedFloat`. When training
+   parameters to this neural network, the function needs to be
 
    ```swift
    // `QuantizedTensor` is a vector space.
@@ -382,7 +391,23 @@ There are three important use cases of such a generalization.
 
 3. Generic optimizers
 
-   Machine learning optimizers.
+   Optimization problems in machine learning is generalized by 
+
+   This, in fact, has been exactly what people have been doing when writing machine
+   learning optimizers, but the conversion has often been implicit because in most
+   cases the tangent space is equal to the cotangent space in a vector space
+   scenario. With this generalization, people will be able to write general
+   optimizers that is both practically general and mathematically correct.
+
+### Differential Registration
+
+We are aiming for an open and extensible system, so we made the compiler
+agnostic of the actual operations - it does not have special knowledge of
+numeric standard library functions or distinguish between primitive operators
+and other functions. We recursively determine a function's differentiability
+based on:
+
+- Whether a function is differen
 
 #### The `@differentiable` attribute
 
@@ -392,10 +417,12 @@ We introduce a declaration attribute `@differentiable` to the language.
 differentiation-mode = 'forward' | 'reverse'
 differentiability = differentiation-mode | 'bidirectional' | 'linear' | 'constant'
 differentiable-attribute = '@differentiable' '(' differentiability ')'
-declaration-attribute-list = differentiable-attribute declaration-attributes
+declaration-attribute = differentiable-attribute
 ```
 
 ### Raw Differential Operators
+
+Now that we have talked about differentiable types and differential registration
 
 ```ebnf
 forward-differential-operator = '#derivative' | '#chainableDerivative'
@@ -409,16 +436,18 @@ expression = autodiff-expression
 
 Example:
 ```swift
-func foo(x: Float) -> Float {
+func f(_ x: Float, _ y: Float) -> Float {
     return sin(x + y)
 }
-let dfoo = #derivative(foo)
-let 𝝯foo = #gradient(foo)
+#derivative(f) // df/d(x,y) : (Float, Float) -> (Float, Float)
+#gradient(f) // 𝝯foo : (Float, Float) -> (Float, Float)
+#chainableDerivative(f) // (Float, Float) -> (Float) -> (Float, (Float, Float))
+                        //  ^~~~~~~~~~~~      ^~~~~      ^~~~~   ^~~~~~~~~~~~
+                        //  original args     seed       result  derivative
+#chainableGradient(f) // (Float, Float) -> (Float, (Float) -> (Float, Float))
+                      //  ^~~~~~~~~~~~      ^~~~~   ^~~~~      ^~~~~~~~~~~~
+                      //  original args     result  seed       gradient
 ```
-
-### Differential Registration
-
-We are aiming for an open and extensible system, we made the compiler agnostic of the actual operations - it does not have special knowledge of numeric standard library functions or distinguish between primitive operators and other functions. We recursively determine a function's differentiability based on:
 
 ### Generalized Differentiability
 
@@ -426,9 +455,8 @@ Mathematically, differentiability is a notion defined around functions.
 
 ### Differentiation APIs
 
-It is a common misconception that differential operators like `#derivative` and
-`#gradient` are APIs targeting general machine learning and scientific computing
-use cases.
+Previously, we introduced keywords `#derivative` and `#gradient` that represent
+differential operators.
 
 #### Directional derivatives and gradients
 
@@ -447,7 +475,9 @@ func directionalDerivative<T : Differentiable, R : Differentiable>(
 ) rethrows -> R.TangentVector {
     return #chainableDerivative(body)(x)(direction)
 }
+```
 
+```
 /// Computes the gradient of the trailing closure at `x`.
 func gradient<T : Differentiable, R : Differentiable>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
