@@ -14,11 +14,12 @@ Table of Contents
 - [Why make AD first-class?](#Why-2)
 - [Vision](#Vision)
 - [Part 1: Differentiable Types](#Differentiable-Types)
-- [Part 2: Basic Differentiation](#Basic-Differentiation)
-- [Part 3: Generalized Differentiability](#Generalized-Differentiability)
-- [Part 4: Differential Operator](#Differential-Operators)
-- [Part 5: Advanced Types for Differentiation](#Advanced-Types-for-Differentiation)
-- [Part 6: Customizable Differentiation](#Advanced-Types-for-Differentiation)
+- [Part 2: Primitive Registration](#Primitive-Registration)
+- [Part 3: Basic Differentiation](#Basic-Differentiation)
+- [Part 4: Generalized Differentiability](#Generalized-Differentiability)
+- [Part 5: True Differential Operators](#True-Differential-Operators)
+- [Part 6: Advanced Types for Differentiation](#Advanced-Types-for-Differentiation)
+- [Part 7: Customizable Differentiation](#Advanced-Types-for-Differentiation)
 - [Applications](#Applications)
 - [Future Directions](#Future-Directions)
 - [Conclusions](#Conclusions)
@@ -353,7 +354,7 @@ available: functional and imperative.
 
 |            | Syntax | Meaning |
 |------------|--------|-------------|
-| Functional | `let 𝝯f = #gradient(f)`<br/>`𝝯f(x)` | Differentiating a function |
+| Functional | `let 𝝯f = gradient(of: f)`<br/>`𝝯f(x)` | Differentiating a function |
 | Imperative | `y = f(x)`<br/>`gradient(of: y, wrt: x)` | Differentiating code traced through data flow |
 
 Without getting into implementation details, functional-style AD is transforming
@@ -367,7 +368,7 @@ Imperative-style AD, on the other hand, is a value-value transformation. In math
 
 
 Part 1: Differentiable Types
---------------------------------
+----------------------------
 
 Swift is a general-purpose programming language. Therefore, not every function
 is mathematically differentiable, and not every type represents a real vector
@@ -418,7 +419,7 @@ public protocol Numeric : Arithmetic, ExpressibleByIntegerLiteral {
 }
 ```
 
-#### The `VectorNumeric` protocol
+### The `VectorNumeric` protocol
 
 After we introduce the `Arithmetic` protocol, which makes the standard library
 suitable for vector APIs and beyond,
@@ -463,7 +464,7 @@ public protocol VectorNumeric: Arithmetic {
 }
 ```
 
-#### The `Differentiable` protocol
+### The `Differentiable` protocol
 
 Now we define a protocol that "activates" a type's differentiablity.
 At a first glance, the conforming type must also be a `VectorNumeric` type.
@@ -486,7 +487,8 @@ the `Differentiable` protocol later on. So we keep `Differentiable` as a
 separate protocol for now and build towards the final design at the end of this
 document.
 
-### Differential Registration
+Part 2: Primitive Registration
+------------------------------
 
 We are aiming for an open and extensible system, so we made the compiler
 agnostic of the actual operations - it does not have special knowledge of
@@ -505,13 +507,12 @@ function, using either the function's linearity properties or a separate
 function to specify the "tangent code" or "adjoint code" for the original
 function.
 
-
-#### The `@differentiable` attribute
+### The `@differentiable` attribute
 
 We introduce a declaration attribute `@differentiable` to the language syntax.
 This attribute is parametrized on the following.
 
-1. Differentiation parameters
+#### Differentiation parameters
 
    Differentiation parameters are marked inline at each argument position in the
    function declaration. By default, every argument of the funtion is to be
@@ -523,7 +524,7 @@ This attribute is parametrized on the following.
    differentiable with respect to `self`, one can add a `wrt: self` to
    the `@differentiable` attribute.
 
-2. Differentiation order
+#### Differentiation order
 
    By default, the `@differentiable` specifies first-order differentiability.
    However, the user can customize this primitive function's maximum
@@ -531,11 +532,11 @@ This attribute is parametrized on the following.
    differentiation order.
 
 
-3. Differentiability
+#### Differentiability
 
    There are five options for differentiablity:
 
-   i. Forward: `@differentiable(forward, tangent: ...)`
+   1. Forward: `@differentiable(forward, tangent: ...)`
 
       This option says that the function is forward-mode differentiable.
       Forward-mode differentiation requires the "tangent code" (or tangent
@@ -548,7 +549,7 @@ This attribute is parametrized on the following.
       in the attribute.
 
 
-   ii. Reverse: `@differentiable(reverse, adjoint: ...)`
+   2. Reverse: `@differentiable(reverse, adjoint: ...)`
 
       This option says that the function is reverse-mode differentiable.
       Reverse-mode differentiation requires the "adjoint code" (or adjoint
@@ -560,26 +561,26 @@ This attribute is parametrized on the following.
       expected type signature, to be specified later in the `adjoint:` parameter
       in the attribute.
 
-   iii. Bidirectional `@differentiable(bidirectional, tangent: ..., adjoint: ...)`
+   3. Bidirectional `@differentiable(bidirectional, tangent: ..., adjoint: ...)`
 
       This option says that the function is both forward-mode differentiable and
       revese-mode differentiable. The compiler will expect both the tangent
       function and the adjoint function to be specified later in this attribute.
 
-   iv. Constant `@differentiable(constant)`
+   4. Constant `@differentiable(constant)`
 
       By definition, constant functions always have zero derivatives and are
       smooth. So differentiating this function will result into a vector (or
       vectors, when the function has multiple differentiation arguments) with
       the same dimensionality as each differentiation argument.
 
-   v. Linear `@differentiable(linear)`
+   5. Linear `@differentiable(linear)`
 
       By definiton, a linear map is always a unary function and its Jacobian is
       the matrix associated with this linear transformation itself. In other
       words, both its differential and its pullback are itself.
 
-4. Associated functions
+#### Associated Functions
 
    As explained, differentiabilities have different functional requirements.
 
@@ -648,15 +649,15 @@ differentiable-attribute = '@differentiable'
 declaration-attribute = differentiable-attribute
 ```
 
-### Raw Differential Operators
+Part 3: Basic Differentiation
+-----------------------------
 
-Now that we have talked about differentiable types and differential
-registration, it's time to move to the core differentiation API.
+### Most Important Cases: Gradient and Derivatives
 
 ```ebnf
-forward-differential-operator = '#derivative'
-reverse-differential-operator = '#gradient'
-differential-operator = forward-differential-operator | reverse-differential-operator
+derivatives-operator = '#derivatives'
+gradient-operator = '#gradient'
+raw-differential-operator = derivatives-operator | gradient-operator
 autodiff-argument-index-specifier = '.' integer-literal
 autodiff-expression =
     differential-operator '(' expression [ ',' 'wrt' ':' autodiff-argument-index-specifier ] ')'
@@ -665,18 +666,47 @@ expression = autodiff-expression
 
 Example:
 ```swift
-func f(_ x: Float, _ y: Float) -> Float {
-    return sin(x + y)
+func f(_ x: Vector<Float>, _ w: Vector<Float>) -> Float {
+   return x • w
 }
-#derivative(f) // (Float, Float) -> (Float?) -> (Float, (Float, Float))
-               //  ^~~~~~~~~~~~      ^~~~~      ^~~~~   ^~~~~~~~~~~~
-               //  original args     seed       result  derivative
-#gradient(f) // (Float, Float) -> (Float, (Float?) -> (Float, Float))
-             //  ^~~~~~~~~~~~      ^~~~~   ^~~~~      ^~~~~~~~~~~~
-             //  original args     result  seed       gradient
+
+#derivatives(f) // (T0, T1) -> (U) -> (U, (T0, T1))
+#pullback(f) // (T0, T1) -> (U, (U) -> (T0, T1))
 ```
 
-### Generalized Differentiability
+### Embrace Generality: Vector-Jacobian Products and Jacobian-Vector Products
+
+```ebnf
+jvp-operator = '#differential'
+vjp-operator = '#pullback'
+raw-differential-operator = jvp-operator | vjp-operator
+```
+
+Example:
+```swift
+// A random generic function that is differentiable.
+func f<T0, T1, U>(_ x: T0, _ y: T1) -> U
+    where T0: Differentiable, T1: Differentiable, U: Differentiable {
+    return someDifferentiableFunction(20, x + y)
+}
+
+#differential(f) // (T0, T1) -> (U) -> (U, (T0, T1))
+// Description:
+//   (T0, T1)       ->  (U)    ->   (U,          (T0, T1))
+//    ^~~~~~             ^           ^           ^~~~~~~~
+//  original args      vector      result    Jacobian-vector products
+
+#pullback(f) // (T0, T1) -> (U, (U) -> (T0, T1))
+// Description:
+//   (T0, T1)       ->  (U,     (U)      ->  (T0, T1))
+//    ^~~~~~             ^       ^           ^~~~~~~~
+//  original args     result   vector   vector-Jacobian products
+```
+
+### Issues with Raw Differential Operators
+
+Part 4: Generalized Differentiability
+-------------------------------------
 
 Automatic differentiation relies on the source code of a function to be able to
 differentiate it. Differential operators like `#gradient` trigger the
@@ -691,28 +721,21 @@ Swift's type system, including an `@autodiff` function type attribute, an
 extension to functions' layout, and new syntax for selecting differentiable
 arguments.
 
-Differential Operators
-----------------------
+Part 5: True Differential Operators
+-----------------------------------
 
 Previously, we introduced keywords `#derivative` and `#gradient` that represent
 differential operators.
 
-### Directional Directives and Gradients
+### Derivatives and Gradient
 
 ```swift
 /// Computes derivatives of `body` at scalar `x`.
 func derivatives<T : FloatingPoint, R : Differentiable>(
     at x: T, in body: @autodiff(forward) (T) throws -> R
 ) rethrows -> R.TangentVector {
-    return #differential(body)(x)
-}
-
-/// Computes Jacobian-vector products of `body` at `x`.
-func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
-    at x: T, vector: T.TangentVector,
-    in body: @autodiff(forward) (T) throws -> R
-) rethrows -> R.TangentVector {
-    return #differential(body)(x)(direction)
+    let (y, dydx) = #differential(body)(x)(1) // seed = dx/dx = 1
+    return dydx
 }
 ```
 
@@ -721,19 +744,14 @@ func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
 func gradient<T : Differentiable, R : FloatingPoint>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
 ) rethrows -> T.CotangentVector {
-    return #gradient(body)(x)
-}
-
-/// Computes the vector-Jacobian products of `body` at `x`.
-func vectorJacobianProducts<T : Differentiable, R : Differentiable>(
-    at x: T, vector: R.CotangentVector,
-    in body: @autodiff(reverse) (T) throws -> R
-) rethrows -> T.CotangentVector {
-    return #chainableGradient(body, seed)(x)
+    let (y, pullback) = #pullback(body)(x)
+    return pullback(1) // seed = ∂y/∂y = 1
 }
 ```
 
-Example: Train a simple 2-layer perceptron
+Example: Train a simple 2-layer perceptron. The snippet computes the gradient
+w.r.t. each parameter at each training step, prints a loss, and optimizes
+parameters.
 
 ```swift
 struct Parameters : ParameterGroup {
@@ -744,8 +762,9 @@ struct Parameters : ParameterGroup {
 }
 
 var params = Parameters()
+let minibatches = Dataset(...)
 var optimizer = StochasticGradientDescent()
-for (x, ŷ) in dataset {
+for (x, ŷ) in minibatches {
     let grads = gradient(at: params) { params in
         let h1 = tanh(matmul(x, params.w1) + params.b1)
         let y = sigmoid(matmul(h1, params.w2) + params.b2)
@@ -753,11 +772,12 @@ for (x, ŷ) in dataset {
         print("Loss is \(loss)")
         return loss
     }
-    optimizer.fit(&params, withGradients: grads)
+    optimizer.fit(&params, gradients: grads)
 }
 ```
 
-### Preserving original result
+
+### Preserving Original Result
 
 Since the trailing closure as an argument to `gradient(at:in:)`, the forward
 computation is just as customizable as within operator-overloading AD systems.
@@ -776,9 +796,7 @@ func valueWithDerivatives<T: FloatingPoint, R: Differentiable>(
 ) rethrows -> (value: R, derivatives: R.TangentVector) {
     return #differential(body)(x)
 }
-```
 
-```swift
 /// Computes `body(x)` and the gradient of `body` at `x`.
 func valueWithGradient<T: Differentiable, R: FloatingPoint>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
@@ -787,7 +805,27 @@ func valueWithGradient<T: Differentiable, R: FloatingPoint>(
 }
 ```
 
-#### Delayed execution of derivative or gradient ([differentials](https://en.wikipedia.org/wiki/Pushforward_(differential)) and [pullbacks](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)))
+### Jacobian-Vector Products, Vector-Jacobian Products, and Jacobian
+
+```swift
+/// Computes Jacobian-vector products of `body` at `x`.
+func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
+    at x: T, vector: T.TangentVector,
+    in body: @autodiff(forward) (T) throws -> R
+) rethrows -> R.TangentVector {
+    return #differential(body)(x)(direction)
+}
+
+/// Computes the vector-Jacobian products of `body` at `x`.
+func vectorJacobianProducts<T : Differentiable, R : Differentiable>(
+    at x: T, vector: R.CotangentVector,
+    in body: @autodiff(reverse) (T) throws -> R
+) rethrows -> T.CotangentVector {
+    return #chainableGradient(body, seed)(x)
+}
+```
+
+### Differentials and Pullbacks
 
 In some reinforcement learning (RL) tasks, it is often required to compute the
 forward pass of a neural network, hand it over to other functions, wait for
@@ -845,132 +883,187 @@ Examples:
     df(gradient(at: t, in: log)) // dy/dt
     ```
 
+### Hessian-Vector Products
 
-Part 4: Generalized Types for Differentiation
+
+Part 6: Generalized Types for Differentiation
 ---------------------------------------------
+
+### Request for Future-Proof Design
+
+There are three important use cases of such a generalization.
+
+1. Customizable weight type
+
+   Orthogonal weight matrixes have shown advantages in neural network training
+   [[1]](https://arxiv.org/abs/1702.00071)
+   [[2]](https://arxiv.org/abs/1709.06079). When differentiating through these
+   networks, gradients with respect to weights will no long stay orthogonal -
+   instead, they are skew-symmetric matrices. While we can represent both
+   orthogonal matrices and skew-symmetric matrices as values of a `Matrix` or
+   `Tensor` type and programmatically ensure its orthogonality, some researchers
+   have been seeking a way to represent this natively in the type system of a
+   programming language and still have AD produce the correct derivative.
+
+2. Quantized training
+
+   Quantization techniques store and calculate numbers in more compact formats,
+   i.e. a fixed-point data type. Conceptually, a quantized tensor for a
+   real-valued `Tensor` can be defined as the following struct:
+
+   ```swift
+   public struct Quantized<Dequantized: Quantizable, QuantizedScalar: FixedWidthInteger>
+       var data: Quantizable
+       var range: Range<QuantizedScalar>
+       var scale: QuantizedScalar
+       var zeroPoint: Int
+   }
+   ```
+
+   We can think of a scenario where the developer defines a neural network as a
+   function whose parameters are of type `QuantizedFloat`. When training
+   parameters to this neural network, the function needs to be
+
+3. Generic optimizers
+
+   Optimization problems in machine learning is generalized by 
+
+   This, in fact, has been exactly what people have been doing when writing machine
+   learning optimizers, but the conversion has often been implicit because in most
+   cases the tangent space is equal to the cotangent space in a vector space
+   scenario. With this generalization, people will be able to write general
+   optimizers that is both practically general and mathematically correct.
+
+### The New `Differentiable` Protocol
 
 Here's the finished `Differentiable` protocol.
 
- ```swift 
- /// A type that mathematically represents a differentiable manifold whose 
- /// tangent spaces are finite-dimensional. 
- /// 
- /// In automatic differentiation, differentiation will produce a Jacobian whose 
- /// elements are of `Tangent` type. 
- public protocol Differentiable { 
-     /// The tangent vector space of this differentiable manifold. 
-     associatedtype TangentVector : VectorNumeric 
-         where TangentVector.ScalarElement : FloatingPoint 
-     /// The cotangent space of this differentiable manifold. 
-     associatedtype CotangentVector : VectorNumeric 
-         where TangentVector.ScalarElement : FloatingPoint 
+ ```swift
+ /// A type that mathematically represents a differentiable manifold whose
+ /// tangent spaces are finite-dimensional.
+ ///
+ /// In automatic differentiation, differentiation will produce a Jacobian whose
+ /// elements are of `Tangent` type.
+ public protocol Differentiable {
+     /// The tangent vector space of this differentiable manifold.
+     associatedtype TangentVector : VectorNumeric
+         where TangentVector.ScalarElement : FloatingPoint
+     /// The cotangent space of this differentiable manifold.
+     associatedtype CotangentVector : VectorNumeric
+         where TangentVector.ScalarElement : FloatingPoint
 
-     /// Returns `self` moved along the value space towards the given tangent 
-     /// vector. In Riemannian geometry (mathematics), this is usually equivalent 
-     /// to retraction or exponential map. 
-     func moved(toward direction: TangentVector) -> Self 
+     /// Returns `self` moved along the value space towards the given tangent
+     /// vector. In Riemannian geometry (mathematics), this is usually equivalent
+     /// to retraction or exponential map.
+     func moved(toward direction: TangentVector) -> Self
 
-     /// Convert a cotangent vector to its corresponding tangent vector. 
-     func tangentVector(from cotangent: CotangentVector) -> TangentVector 
- } 
- ``` 
+     /// Convert a cotangent vector to its corresponding tangent vector.
+     func tangentVector(from cotangent: CotangentVector) -> TangentVector
+ }
+ ```
 
- Why do we need a customizable `TangentVector` and a custom `CotangentVector`? 
- While most machine learning frameworks model derivatives as  
+Why do we need a customizable `TangentVector` and a custom `CotangentVector`?
 
- When the tangent vector of a differentiable manifold is equal to its cotangent 
- vector, we can simply provide a default implementation of 
- `tangentVector(from:)`, which is just the identity function. 
+When the tangent vector of a differentiable manifold is equal to its cotangent
+vector, we can simply provide a default implementation of
+`tangentVector(from:)`, which is just the identity function.
 
- ```swift 
- public extension Differentiable where TangentVector == CotangentVector { 
-     func tangentVector(from cotangent: CotangentVector) -> TangentVector { 
-         return cotangent 
-     } 
- } 
- ``` 
-
- When a differentiable manifold is a vector space, and when the tangent space 
- equals manifold itself, its exponential ma 
-
- ```swift 
- public extension Differentiable 
-     where Self : VectorNumeric, TangentVector == Self { 
-     func moved(toward direction: TangentVector) -> Self { 
-         return self + direction 
-     } 
- } 
- ``` 
-
- When a differentiable manifold is a vector space, it's tangent space is usually 
- itself. In these cases, we simply define `moved(toward:)` as vector addition. 
-
- There are three important use cases of such a generalization. 
-
- 1. Customizable weight type 
-
-    Orthogonal weight matrixes have shown advantages in neural network training 
-    [[1]](https://arxiv.org/abs/1702.00071) 
-    [[2]](https://arxiv.org/abs/1709.06079). When differentiating through these 
-    networks, gradients with respect to weights will no long stay orthogonal - 
-    instead, they are skew-symmetric matrices. While we can represent both 
-    orthogonal matrices and skew-symmetric matrices as values of a `Matrix` or 
-    `Tensor` type and programmatically ensure its orthogonality, some researchers 
-    have been seeking a way to represent this natively in the type ystem of a 
-    programming language and still have AD produce the correct derivative. 
-
- 2. Quantized training 
-
-    Quantization techniques store and calculate numbers in more compact formats, 
-    i.e. a fixed-point data type. Conceptually, a quantized tensor for a 
-    real-valued `Tensor` can be defined as the following struct: 
-
-    ```swift 
-    struct QuantizedTensor<OriginalScalar, QuantizedScalar> 
-        where OriginalScalar: AccelerableByTensorFlow & FloatingPoint, 
-              QuantizedScalar: AccelerableByTensorFlow & FixedWidthInteger { 
-        var data: Tensor<Int8> 
-        var range: Range<Float> 
-        var scale: Float 
-        var zeroPoint: Int32 
+```swift 
+public extension Differentiable where TangentVector == CotangentVector { 
+    func tangentVector(from cotangent: CotangentVector) -> TangentVector { 
+        return cotangent 
     } 
-    ``` 
+} 
+``` 
 
-    We can think of a scenario where the developer defines a neural network as a 
-    function whose parameters are of type `QuantizedFloat`. When training 
-    parameters to this neural network, the function needs to be 
+When a differentiable manifold is a vector space, it's tangent space is usually 
+itself. In these cases, we simply define `moved(toward:)` as vector addition. 
 
-    ```swift 
-    // `QuantizedTensor` is a vector space. 
-    extension QuantizedTensor : VectorNumeric { 
-        typealias ScalarElement = OriginalScalar 
-        // Implementations of `+` and `*` are omitted. 
+```swift 
+public extension Differentiable 
+    where Self : VectorNumeric, TangentVector == Self { 
+    func moved(toward direction: TangentVector) -> Self { 
+        return self + direction 
     } 
+} 
+``` 
 
-    // `QuantizedTensor` is a differentiable manifold. 
-    extension QuantizedTensor : Differentiable { 
-        typealias TangentVector = Tensor<OriginalScalar> 
-        typealias CotangentVector = Tensor<OriginalScalar> 
-    } 
-    ``` 
+### Generalized Differential Operators
 
-    One would expect to differentiate a function of type `(QuantizedTensor<Float, 
-    Int8>) -> U` to train parameters. However, we never want gradients at each 
-    parameter to be a quantized number - instead, the range and zero point are 
-    often recomputed for each parameter update. 
+#### Jacobian-Vector Products
 
- 3. Generic optimizers 
+```swift
+/// Computes derivatives of `body` at scalar `x`.
+func derivatives<T : FloatingPoint, R : Differentiable>(
+    at x: T, in body: @autodiff(forward) (T) throws -> R
+) rethrows -> R.TangentVector {
+    return #differential(body)(x)
+}
 
-    Optimization problems in machine learning is generalized by  
+/// Computes Jacobian-vector products of `body` at `x`.
+func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
+    at x: T, vector: T.TangentVector,
+    in body: @autodiff(forward) (T) throws -> R
+) rethrows -> R.TangentVector {
+    return #differential(body)(x)(direction)
+}
+```
 
-    This, in fact, has been exactly what people have been doing when writing machine 
-    learning optimizers, but the conversion has often been implicit because in most 
-    cases the tangent space is equal to the cotangent space in a vector space 
-    scenario. With this generalization, people will be able to write general 
-    optimizers that is both practically general and mathematically correct. 
+#### Vector-Jacobian Products
 
+```swift
+/// Computes the gradient of `body` at `x`.
+func gradient<T : Differentiable, R : FloatingPoint>(
+    at x: T, in body: @autodiff(reverse) (T) throws -> R
+) rethrows -> T.CotangentVector {
+    return #gradient(body)(x)
+}
 
-#### Customizable differentiation
+/// Computes the vector-Jacobian products of `body` at `x`.
+func vectorJacobianProducts<T : Differentiable, R : Differentiable>(
+    at x: T, vector: R.CotangentVector,
+    in body: @autodiff(reverse) (T) throws -> R
+) rethrows -> T.CotangentVector {
+    return #chainableGradient(body, seed)(x)
+}
+```
+
+### Solution
+
+1. Custom weight type
+
+2. Quantized Training
+
+   ```swift
+   // `Quantized` is a vector space when the dequantized type is one.
+   extension Quantized: VectorNumeric where Dequantized: VectorNumeric {
+       typealias ScalarElement = Dequantized.ScalarElement
+       static func + (lhs: Quantized, rhs: Quantized) -> Quantized {
+           // Custom code: Dequantize, add, and requantize!
+       }
+       static func * (lhs: ScalarElement, rhs: Quantized) -> Quantized {
+           // Custom code: Dequantize, add, and requantize!
+       }
+   }
+
+   // `Quantized` is a differentiable manifold when the dequantized type is one.
+   extension Quantized: Differentiable where Dequantized: Differentiable {
+       typealias TangentVector = Dequantized.TangentVector
+       typealias CotangentVector = Dequantized.CotangentVector
+
+       func moved(toward tangent: Dequantized.TangentVector) -> QuantizedTensor {
+           // Custom code: Dequantize, optimize, and requantize!
+       }
+   }
+   ```
+
+   One would expect to differentiate a function of type
+   `(Quantized<Tensor<Float>, Int8>) -> U` to train parameters. However, we
+   never want gradients at each parameter to be a quantized number - instead,
+   the range and zero point are often recomputed for each parameter update.
+
+Part 7. Customizable differentiation
+------------------------------------
 
 Some machine learning models require manipulating the gradient with respect to
 certain values, e.g. gradient clipping.
