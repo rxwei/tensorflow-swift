@@ -13,13 +13,13 @@ Table of Contents
 - [Why does Swift need AD?](#Why-1)
 - [Why make AD first-class?](#Why-2)
 - [Vision](#Vision)
-- [Part 1: Differentiable Types](#Differentiable-Types)
-- [Part 2: Primitive Registration](#Primitive-Registration)
-- [Part 3: Basic Differentiation](#Basic-Differentiation)
-- [Part 4: Generalized Differentiability](#Generalized-Differentiability)
-- [Part 5: True Differential Operators](#True-Differential-Operators)
-- [Part 6: Advanced Types for Differentiation](#Advanced-Types-for-Differentiation)
-- [Part 7: Customizable Differentiation](#Advanced-Types-for-Differentiation)
+- [Part 1: Differentiable Types](#Part-1-Differentiable-Types)
+- [Part 2: Primitive Registration](#Part-2-Primitive-Registration)
+- [Part 3: Basic Differentiation](#Part-3-Basic-Differentiation)
+- [Part 4: Generalized Differentiability](#Part-4-Generalized-Differentiability)
+- [Part 5: True Differential Operators](#Part-5-True-Differential-Operators)
+- [Part 6: Generalized Types for Differentiation](#Part-6-Generalized-Types-for-Differentiation)
+- [Part 7: Customizable Differentiation](#Part-7-Customizable-Differentiation)
 - [Applications](#Applications)
 - [Future Directions](#Future-Directions)
 - [Conclusions](#Conclusions)
@@ -435,32 +435,32 @@ customizable. The initializer takes a value of the `ScalarElement` type and a
 /// A type that represents an unranked vector space. Values of this type are
 /// elements in this vector space and with a specific dimensionality.
 public protocol VectorNumeric: Arithmetic {
-  /// The type of scalars in the real vector space.
-  associatedtype ScalarElement
+    /// The type of scalars in the real vector space.
+    associatedtype ScalarElement
 
-  /// The type whose values specifies the dimensionality of an object in the
-  /// real vector space.
-  associatedtype Dimensionality
+    /// The type whose values specifies the dimensionality of an object in the
+    /// real vector space.
+    associatedtype Dimensionality
 
-  /// Create a scalar in the real vector space that the type represents.
-  ///
-  /// - Parameter scalar: the scalar
-  init(_ scalar: ScalarElement)
+    /// Create a scalar in the real vector space that the type represents.
+    ///
+    /// - Parameter scalar: the scalar
+    init(_ scalar: ScalarElement)
 
-  /// Create an object in the real vector space with the specified
-  /// dimensionality by repeatedly filling the object with the specified
-  /// value.
-  ///
-  /// - Parameters:
-  ///   - repeatedValue: the value repeat for the specified dimensionality
-  ///   - dimensionality: the dimensionality
-  init(repeating repeatedValue: ScalarElement, dimensionality: Dimensionality)
+    /// Create an object in the real vector space with the specified
+    /// dimensionality by repeatedly filling the object with the specified
+    /// value.
+    ///
+    /// - Parameters:
+    ///   - repeatedValue: the value repeat for the specified dimensionality
+    ///   - dimensionality: the dimensionality
+    init(repeating repeatedValue: ScalarElement, dimensionality: Dimensionality)
 
-  /// The dimensionality of this vector.
-  var dimensionality: Dimensionality { get }
+    /// The dimensionality of this vector.
+    var dimensionality: Dimensionality { get }
 
-  /// Returns the scalar product of the vector.
-  static func * (scale: ScalarElement, value: Self) -> Self
+    /// Returns the scalar product of the vector.
+    static func * (scale: ScalarElement, value: Self) -> Self
 }
 ```
 
@@ -509,8 +509,25 @@ function.
 
 ### The `@differentiable` attribute
 
-We introduce a declaration attribute `@differentiable` to the language syntax.
-This attribute is parametrized on the following.
+We introduce a declaration attribute `@differentiable` to Swift's syntax. The
+full grammar of `@differentiable` is defined as follows:
+
+```ebnf
+differentiation-mode = 'forward' | 'reverse' | 'bidirectional'
+differentiability = differentiation-mode  | 'linear' | 'constant'
+differentiability-wrt-self = 'wrt' ':' 'self'
+differentiation-order = 'once'
+differentiation-tangent-specifier = 'tangent' ':' declaration-name
+differentiation-adjoint-specifier = 'adjoint' ':' declaration-name
+differentiable-attribute = '@differentiable'
+    '(' differentiability
+    [ ',' differentiability-wrt-self ]
+    [ ',' differentiation-once ]
+    [ ',' differentiation-tangent-specifier ]
+    [ ',' differentiation-adjoint-specifier ]
+    ')'
+declaration-attribute = differentiable-attribute
+```
 
 #### Differentiation parameters
 
@@ -524,129 +541,178 @@ This attribute is parametrized on the following.
    differentiable with respect to `self`, one can add a `wrt: self` to
    the `@differentiable` attribute.
 
-#### Differentiation order
-
-   By default, the `@differentiable` specifies first-order differentiability.
-   However, the user can customize this primitive function's maximum
-   differentiable order by specifying `order: n` where `n` is the maximum
-   differentiation order.
-
-
 #### Differentiability
 
-   There are five options for differentiablity:
+There are five options for differentiablity:
 
-   1. Forward: `@differentiable(forward, tangent: ...)`
+1. Forward: `@differentiable(forward, tangent: ...)`
 
-      This option says that the function is forward-mode differentiable.
-      Forward-mode differentiation requires the "tangent code" (or tangent
-      function) of this function, so that Swift knows how to compute the
-      function's directional derivatives in the direction specified by the
-      tangent vector that has been forward-propagated to the tangent function.
+   This option says that the function is forward-mode differentiable.
+   Forward-mode differentiation requires the "tangent code" (or tangent
+   function) of this function, so that Swift knows how to compute the
+   function's directional derivatives in the direction specified by the
+   tangent vector that has been forward-propagated to the tangent function.
 
-      The compiler will expect the identifier of the tangent function, with an
-      expected type signature, to be specified later in the `tangent:` parameter
-      in the attribute.
+   The compiler will expect the identifier of the tangent function, with an
+   expected type signature, to be specified later in the `tangent:` parameter
+   in the attribute.
 
+2. Reverse: `@differentiable(reverse, adjoint: ...)`
 
-   2. Reverse: `@differentiable(reverse, adjoint: ...)`
+   This option says that the function is reverse-mode differentiable.
+   Reverse-mode differentiation requires the "adjoint code" (or adjoint
+   function) of this function, so that Swift knows how to compute the
+   function's vector-Jacobian products, where the vector, or called "adjoint
+   vector" has been back-propagated to the adjoint function.
 
-      This option says that the function is reverse-mode differentiable.
-      Reverse-mode differentiation requires the "adjoint code" (or adjoint
-      function) of this function, so that Swift knows how to compute the
-      function's vector-Jacobian products, where the vector, or called "adjoint
-      vector" has been back-propagated to the adjoint function.
+   The compiler will expect the identifier of the adjoint function, with an
+   expected type signature, to be specified later in the `adjoint:` parameter
+   in the attribute.
 
-      The compiler will expect the identifier of the adjoint function, with an
-      expected type signature, to be specified later in the `adjoint:` parameter
-      in the attribute.
+3. Bidirectional `@differentiable(bidirectional, tangent: ..., adjoint: ...)`
 
-   3. Bidirectional `@differentiable(bidirectional, tangent: ..., adjoint: ...)`
+   This option says that the function is both forward-mode differentiable and
+   revese-mode differentiable. The compiler will expect both the tangent
+   function and the adjoint function to be specified later in this attribute.
 
-      This option says that the function is both forward-mode differentiable and
-      revese-mode differentiable. The compiler will expect both the tangent
-      function and the adjoint function to be specified later in this attribute.
+4. Constant `@differentiable(constant)`
 
-   4. Constant `@differentiable(constant)`
+   By definition, constant functions always have zero derivatives and are
+   smooth. So differentiating this function will result into a vector (or
+   vectors, when the function has multiple differentiation arguments) with
+   the same dimensionality as each differentiation argument.
 
-      By definition, constant functions always have zero derivatives and are
-      smooth. So differentiating this function will result into a vector (or
-      vectors, when the function has multiple differentiation arguments) with
-      the same dimensionality as each differentiation argument.
+5. Linear `@differentiable(linear)`
 
-   5. Linear `@differentiable(linear)`
-
-      By definiton, a linear map is always a unary function and its Jacobian is
-      the matrix associated with this linear transformation itself. In other
-      words, both its differential and its pullback are itself.
+   By definiton, a linear map is always a unary function and its Jacobian is
+   the matrix associated with this linear transformation itself. In other
+   words, both its differential and its pullback are itself.
 
 #### Associated Functions
 
-   As explained, differentiabilities have different functional requirements.
+As explained, differentiabilities have different functional requirements.
 
-   1. `forward` differentiability
+1. `forward` differentiability
 
-      When the differentiability is `forward`, the compiler expects a `tangent:`
-      label in the attribute followed by the identifier (qualified or unqualified)
-      of the tangent function that is to be associated with the original function.
-      If the original function declaration has type `(T0, ..., Tn) -> U`, then
-      the expected type of the tangent function is `((T0, T0), ..., (Tn, Tn)) ->
-      (U, U)`. As we can see, every argument of the original function has become
-      a "dual number" in the tangent function represented as a tuple. The first
-      element of such a tuple is the original argument, the second argument the
-      forward-propagated directional derivatives, namely the the "vector" in
-      "Jacobian-vector product". The result of the tangent function is also a
-      "dual number", a tuple of the original result and the directional
-      derivatives. If any of the original arguments is marked as `@nondiff`, it
-      will not become a dual number in the tangent function's argument list but
-      will remain as the original argument itself.
+   When the differentiability is `forward`, the compiler expects a `tangent:`
+   label in the attribute followed by the identifier (qualified or unqualified)
+   of the tangent function that is to be associated with the original function.
+   If the original function declaration has type `(T0, ..., Tn) -> U`, then
+   the expected type of the tangent function is `((T0, T0), ..., (Tn, Tn)) ->
+   (U, U)`. As we can see, every argument of the original function has become
+   a "dual number" in the tangent function represented as a tuple. The first
+   element of such a tuple is the original argument, the second argument the
+   forward-propagated directional derivatives, namely the the "vector" in
+   "Jacobian-vector product". The result of the tangent function is also a
+   "dual number", a tuple of the original result and the directional
+   derivatives. If any of the original arguments is marked as `@nondiff`, it
+   will not become a dual number in the tangent function's argument list but
+   will remain as the original argument itself.
 
-   2. `reverse` differentiability
+2. `reverse` differentiability
 
-      When the differentiability is `reverse`, the compiler expects an `adjoint:`
-      label in the attribute followed by the identifier (qualified or unqualified)
-      of the adjoint function that is to be associated with the original function.
-      If the original function declaration has type `(T0, ..., Tn) -> U`, then
-      the expected type of the adjoint function is `(T0, ..., Tn, U, U) -> (T0,
-      ..., Tn)`. As we can see, the first `n` arguments to the adjoint function,
-      `T0, ..., Tn`,  are the original arguments. The next argument is the
-      original function's result. The last argument is the back-propagated
-      partial derivatives at the original function's result,
-      namely the "vector" in "vector-Jacobian product". The result of the
-      adjoint function contains partial derivatives at each argument, if the
-      argument has not been marked as `@nondiff`.
+   When the differentiability is `reverse`, the compiler expects an `adjoint:`
+   label in the attribute followed by the identifier (qualified or unqualified)
+   of the adjoint function that is to be associated with the original function.
+   If the original function declaration has type `(T0, ..., Tn) -> U`, then
+   the expected type of the adjoint function is `(T0, ..., Tn, U, U) -> (T0,
+   ..., Tn)`. As we can see, the first `n` arguments to the adjoint function,
+   `T0, ..., Tn`,  are the original arguments. The next argument is the
+   original function's result. The last argument is the back-propagated
+   partial derivatives at the original function's result,
+   namely the "vector" in "vector-Jacobian product". The result of the
+   adjoint function contains partial derivatives at each argument, if the
+   argument has not been marked as `@nondiff`.
 
-   3. `bidirectional` differentiability
+3. `bidirectional` differentiability
 
-      When the differentiability is `bidirectional`, the compiler expects both
-      `tangent:` and `adjoint:` labels in the attribute each followed by the
-      identifier (qualified or unqualified) of the respective function
-      that is to be associated with the original function.
+   When the differentiability is `bidirectional`, the compiler expects both
+   `tangent:` and `adjoint:` labels in the attribute each followed by the
+   identifier (qualified or unqualified) of the respective function
+   that is to be associated with the original function.
 
-   4. Other differentiabilities
+4. Other differentiabilities
 
-      Other differentiabilities such as `constant` and `linear` do not require
-      any associated functions. However, the users can choose to specify
-      tangent/adjoint function(s) for their own purposes such as custom
-      optimizations.
+   Other differentiabilities such as `constant` and `linear` do not require
+   any associated functions. However, the users can choose to specify
+   tangent/adjoint function(s) for their own purposes such as custom
+   optimizations.
 
-The full grammar of `@differentiable` is defined as follows:
+#### Differentiation order
 
-```ebnf
-differentiation-mode = 'forward' | 'reverse' | 'bidirectional'
-differentiability = differentiation-mode  | 'linear' | 'constant'
-differentiability-wrt-self = 'wrt' ':' 'self'
-differentiation-order = 'order' ':' integer-literal
-differentiation-tangent-specifier = 'tangent' ':' declaration-name
-differentiation-adjoint-specifier = 'adjoint' ':' declaration-name
-differentiable-attribute = '@differentiable'
-    '(' differentiability
-    [ ',' differentiability-wrt-self ]
-    [ ',' differentiation-order ]
-    [ ',' differentiation-tangent-specifier ]
-    [ ',' differentiation-adjoint-specifier ]
-    ')'
-declaration-attribute = differentiable-attribute
+When a function is marked as `@differentiable`, Swift assumes it to be
+[smooth](https://en.wikipedia.org/wiki/Smoothness), i.e. differentiable at all
+orders, unless `once` is specified in the attribute, in which case Swift will
+not guarantee any higher-order differentiability. If their associated functions
+(tangent or adjoint) are serialized, then their derivatives _may_ be
+differentiable via a separate code transformation.
+
+Differentiabilities `linear` and `constant` guarantee smoothness, and
+they do not have to be serialized whatsoever because their derivatives do not
+depend on any code transformation.
+
+`forward` and `reverse` transitively require the tangent function and the
+adjoint function, respectively, to be smoooth with respect to the original
+arguments. When compiling such declarations, Swift will verify the
+tangent/adjoint function is also smooth by static analysis. If they are not
+smooth, the compiler will error out, prompting the user to insert `once` in the
+`@differentiable` attribute.
+
+Example 1. Linear functions are differentiable at any order.
+
+```swift
+@differentiable(linear)
+func linearFn(x: Vector<Float>) -> Float {
+    ...
+}
+```
+
+Example 2. A forward-mode primitive-differentiable function whose tangent is closed-form
+and smooth is differentiable.
+
+```swift
+// Okay, the tangent function is smooth.
+@differentiable(forward, tangent: tangentFoo)
+func foo(_ x: Vector<Float>) -> Float {
+    return Vector(repeating: sin(x), dimensionality: [2, 3])
+}
+
+func tangentFoo(_ dualX: (Float, Float), 
+                originalValue: Vector<Float>) -> Vector<Float> {
+    let (x, dx) = dualX
+    // Smooth because `Vector.init(repeating:dimensionality:)`, `*`, `sin` and `cos` 
+    // are all declared `@differentiable` and are smooth.
+    return Vector(repeating: cos(x) * dx, dimensionality: [2, 3])
+}
+```
+
+Example 3. A reverse-mode primitive-differentiable function whose tangent is not
+smooth.
+
+```swift
+@differentiable(forward, adjoint: adjointBar)
+func bar(_ x: Vector<Float>) -> Float {
+    return sin(x)[0]
+}
+
+func adjointBar(_ x: Vector<Float>, y: Float, adjoint: Float) -> Vector<Float> {
+    var ∂y∂x = Vector<Float>(repeating: 0, dimensionality: x.dimensionality)
+    ∂y∂x[0] = cos(x[0]) * adjoint
+    return ∂y∂x
+}
+```
+```console
+test.swift:3:35: error: adjoint function `adjointBar` does not support higher-order 
+differentiation because it is not smooth; would you like to add `once` to declare the
+function as non-smooth?
+  @differentiable(reverse, adjoint: adjointBar)
+                                    ^~~~~~~~~~
+test.swift:8:6: note: `adjointBar` is defined here
+  func adjointBar(_ x: Vector<Float>, y: Float, adjoint: Float) -> Vector<Float> {
+       ^~~~~~~~~~
+test.swift:10:9: note: operation is not differentiable
+      ∂y∂x[0] = cos(x[0]) * adjoint
+          ^~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
 Part 3: Basic Differentiation
@@ -703,29 +769,135 @@ func f<T0, T1, U>(_ x: T0, _ y: T1) -> U
 //  original args     result   vector   vector-Jacobian products
 ```
 
-### Issues with Raw Differential Operators
+### How It Works
+
+The compiler type-checks a `#gradient(f)`, as well as other differential
+operators, by searching for the closest match given the contextual type. `f` is
+expected to have a definition to be differentiable, and thus cannot be an
+closure whose body is opaque to the compiler. If so, Swift reports an error.
+
+Later in the compilation pipeline, the compiler recursively transforms the code
+of `f` to its gradient function `∇f` (or other functions in other modes of
+differentiation), and replaces `#gradient(f)` with `∇f`. Everything composes
+together naturally. Now, differentiation works.
+
+### AD in Action
+
+Automatic Differentiation based on raw differential opreators is already
+available and being incubated temporarily on [the "tensorflow" branch of
+Swift](https://github.com/apple/swift/tree/tensorflow). Swift for TensorFlow
+[development
+toolchains](https://github.com/tensorflow/swift/blob/master/Installation.md) and
+[tutorials](https://github.com/tensorflow/swift-tutorials/blob/master/iris/swift_tensorflow_tutorial.ipynb)
+are available for trying out this feature.
 
 Part 4: Generalized Differentiability
 -------------------------------------
 
-Automatic differentiation relies on the source code of a function to be able to
-differentiate it. Differential operators like `#gradient` trigger the
+Automatic differentiation relies on the definition (body) of a function to be
+able to differentiate it. Differential operators like `#gradient` trigger the
 differentiation of a function, and the differentiability of the function is
-determined as differentiation goes. This simple system works perfectly when
-differentiating concrete functions defined in a local module, but does not allow
-differentiation of opaque function values or methods required by protocols.
-While the former is not a struct requirement in machine learning systems, the
-latter fundamentally obstructs composable, protocol-oriented machine learning
-APIs. This document describes a new formalization of differentiability in
-Swift's type system, including an `@autodiff` function type attribute, an
-extension to functions' layout, and new syntax for selecting differentiable
-arguments.
+determined as differentiation goes. This works perfectly so far, but has a
+number of problems.
+
+### Issues with Definition-Based Differentiability
+
+#### Syntactic Weirdness
+   
+Raw differential operators adopt the pound-keyword syntax, which has been
+previously used for accessing compiler builtins, e.g. `#file` and `#dsohandle`,
+referring to IDE-specific objects, e.g. `#colorLiteral` and `#imageLiteral`, and
+interoperating with "stringly-typed" Objective-C key paths, e.g.
+`#keyPath(...)`. The pound-keyword syntax does not have native parsing support
+for syntactic features like trailing closures, so it is hard to make the closure
+code short under differential operators like `#gradient`.
+
+Example:
+```swift
+// Ideal
+let dydx = gradient { x in
+    sin(x) + cos(x)
+}
+
+// Reality
+let dydx = #gradient({ x in
+    sin(x) + cos(x)
+})
+```
+
+#### A Higher-Order Function, But Not Quite
+
+When we introduced AD in Swift earlier in this document, we defined the
+differential operator as a higher-order function. Type checking and type
+inference were just expected to work like any other functions.
+
+However, since the compiler needs to reject functions that are not
+differentiable and differentiability is not part of the type system, even we
+were to redefine `#gradient` as a higher-order function named `gradient(of:)`,
+the compiler will still have to maintain dedicated knowledge about this
+function in order to reject invalid arguments.
+
+#### Cross-Module Differentiability, Without Inlining
+
+As of now, the differentiability of a function is determined solely through
+two tests:
+- Is the function a primitive-differentiable function (`@differentiable`)?
+- Can the function's body be differentiated in the differentiation mode
+  associated with the differential opreator applied?
+
+This simple system works perfectly when differentiating concrete functions
+defined in a local module, but does not allow differentiation of opaque function
+values or methods required by protocols. While being free of serialization is
+not a strict requirement for numerical computing libraries, not supporting
+differentiation on protocol requirements fundamentally obstructs composable
+high-level APIs that rely on AD, such as machine learning model APIs.
+
+#### Opaque Closures are Non-Differentiable
+
+There is no way to define a high-order function that differentiates its argument
+using `#gradient`. Here's an example:
+
+```swift
+func foo(_ f: (Float) -> Float) -> Float {
+    return #gradient(f)(0)
+}
+```
+
+```console
+test.swift:2:22: error: cannot differentiate an opaque closure
+    return #gradient(f)(0)
+           ~~~~~~~~~~^~
+test.swift:1:12: note: value defined here
+func foo(_ f: (Float) -> Float) -> Float {
+           ^~~~~~~~~~~~~~~~~~~
+```
+
+Closure arguments and dynamic dispatch are non-differentiable through direct
+source code transformation. The compiler does not statically know where `foo` is
+coming from, nor can it delegate the task of differentiation of argument `f` to
+each callsite of `foo` because it cannot be expressed in the type system.
+
+### Solution: Differentiability in Function Types
+
+We define a new formalization of differentiability in Swift's type system,
+including an `@autodiff` function type attribute, an extension to functions'
+layout, and new syntax for selecting differentiable arguments.
+
+#### The `@autodiff` function type attribute
+
+#### Conversion Between Differentiabilities
+
+| Convertible to: | None | Linear | Constant | Forward | Reverse | Bidirectional |
+|-----------------+------+--------+----------+---------+---------+---------------|
+| None            | ✔    |        |          |         |         |               |
+| Linear          | ✔    | ✔      |          | ✔       | ✔       | ✔             |
+| Constant        | ✔    | ✔      | ✔        |         |         |               |
+| Forward         | ✔    |        |          | ✔       |         |               |
+| Reverse         | ✔    |        |          |         | ✔       |               |
+| Bidirectional   | ✔    |        |          | ✔       | ✔       |               |
 
 Part 5: True Differential Operators
 -----------------------------------
-
-Previously, we introduced keywords `#derivative` and `#gradient` that represent
-differential operators.
 
 ### Derivatives and Gradient
 
@@ -794,50 +966,48 @@ operators.
 func valueWithDerivatives<T: FloatingPoint, R: Differentiable>(
     at x: T, in body: @autodiff(forward) (T) throws -> R
 ) rethrows -> (value: R, derivatives: R.TangentVector) {
-    return #differential(body)(x)
+    return #differential(body)(x)(1)
 }
 
 /// Computes `body(x)` and the gradient of `body` at `x`.
 func valueWithGradient<T: Differentiable, R: FloatingPoint>(
     at x: T, in body: @autodiff(reverse) (T) throws -> R
 ) rethrows -> (value: R, gradient: T.CotangentVector) {
-    return #differential(body)(x)
+    return #differential(body)(x)(1)
 }
 ```
 
 ### Jacobian-Vector Products, Vector-Jacobian Products, and Jacobian
 
+Jacobian-vector products (forward-mode) and vector-Jacobian products
+(reverse-mode) are extremely useful differential operators for lots of tasks in
+numerical computing.
+
 ```swift
 /// Computes Jacobian-vector products of `body` at `x`.
 func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
-    at x: T, vector: T.TangentVector,
+    at x: T, vector: T,
     in body: @autodiff(forward) (T) throws -> R
-) rethrows -> R.TangentVector {
-    return #differential(body)(x)(direction)
+) rethrows -> R {
+    return #differential(body)(x)(vector)
 }
 
 /// Computes the vector-Jacobian products of `body` at `x`.
 func vectorJacobianProducts<T : Differentiable, R : Differentiable>(
-    at x: T, vector: R.CotangentVector,
+    at x: T, vector: R,
     in body: @autodiff(reverse) (T) throws -> R
-) rethrows -> T.CotangentVector {
-    return #chainableGradient(body, seed)(x)
+) rethrows -> T {
+    return #pullback(body)(x)(vector)
 }
 ```
 
 ### Differentials and Pullbacks
 
-In some reinforcement learning (RL) tasks, it is often required to compute the
-forward pass of a neural network, hand it over to other functions, wait for
-the adjoint to be back-propagated, and then compute the backward computation.
-
-
-In  that's to be chained with the
-function's
-[differential](https://en.wikipedia.org/wiki/Pushforward_(differential)), and a
-back-propagated gradient that's to be chained with the function's
-[pullback](https://en.wikipedia.org/wiki/Pullback_(differential_geometry)),
-respectively.
+In some cases, some computational tasks rely on fully extensible differential
+operators as well as maximum efficiency, e.g. computing vector-Jacobian products
+and also the original function's result. Luckily, the two operators we mentioned
+in the very beginning when we introduced Jacobians are the ones we need:
+differential and pullback.
 
 ```swift
 /// Computes the differential of `body` at `x`.
@@ -871,10 +1041,9 @@ Examples:
     ```
 
 2. Chain gradients freely using pullbacks.
-
     ```swift
     let x = 0.5
-    let (y, df) = valueAndPullback(at: x) { x in
+    let (y, df) = pullback(at: x) { x in
         cos(sin(x))
     }
 
@@ -885,6 +1054,50 @@ Examples:
 
 ### Hessian-Vector Products
 
+Second-order optimization methods in machine learning make use of
+[Hessians](https://en.wikipedia.org/wiki/Hessian_matrix) and Hessian-vector
+products, which can be hard to compute. Many AD libraries such as Autograd
+already support Hessians by supporting arbitrarily nested
+forward-mode/reverse-mode differentiation. Hessian-vector products can be
+efficiently computed by applying "forward-on-reverse", namely applying the
+composition of the forward-mode differential opreator and the reverse-mode
+differential operator on a function.
+
+<p align="center">
+<img src="https://latex.codecogs.com/png.latex?\mathbf{H_f}(\mathbf{x})\mathbf{v}&space;=&space;\mathbf{J}_{\nabla&space;\mathbf{f}}(\mathbf{x})\mathbf{v}" title="\mathbf{H_f}(\mathbf{x})\mathbf{v} = \mathbf{J}_{\nabla \mathbf{f}}(\mathbf{x})\mathbf{v}" />
+</p>
+
+Just like other differential operators, we can define the Hessian-vector
+products operator in a simple functional way.
+
+```swift
+func hvp<T, R>(_ f: @autodiff (T) -> R, vector: T) -> (T) -> T
+    where T: Differentiable, R: FloatingPoint {
+    return differential(gradient(f))
+}
+```
+
+Nested differentiation without a careful implementation is prone to a bug known
+as purturbation confusion
+[[1]](http://www.bcl.hamilton.ie/~qobi/nesting/papers/ifl2005.pdf)
+[[2]](https://arxiv.org/abs/1211.4892). Language-integrated AD in Swift will
+enforce tagging in compiler-generated code to guarantee the correctness of
+higher-order derivatives.
+
+### Standard Library or an `AutomaticDifferentiation` Module?
+
+Earlier in this document, we discussed enhancements to standard library
+protocols and extensions to the standard library to model differentiable types.
+These protocols are general enough for standard library types such as floating
+point scalars (`Float`, `Double`, and `Float80`) and potentially [SIMD
+vectors](https://github.com/apple/swift-evolution/blob/master/proposals/0229-simd.md).
+However, in any general-purpose programming language, there is always a question
+of how much math the standard library should have.
+
+We do not the Swift standard library is a place for .
+It can be easily defined by the user, and can be offered through a separate
+`AutomaticDifferentiation` module in Swift so that it won't interfere with
+other general-purpose functions.
 
 Part 6: Generalized Types for Differentiation
 ---------------------------------------------
@@ -988,35 +1201,135 @@ public extension Differentiable
 } 
 ``` 
 
-### Generalized Differential Operators
+### Deriving Conformances to `VectorNumeric` and `Differentiable`
 
-#### Jacobian-Vector Products
+It is very common for numerical computing to deal with lots of parameters, each
+of which is a vector or a matrix. In these cases, instead of manually specifying
+each input in a differential opreator's parameter list, users would often like
+to differentiate through structures and obtain a stucture of partial
+derivatives. It is important for the Swift to provide derived conformances for
+core protocols for numerical computing: `Differentiable` and `VectorNumeric`.
+
+Mathematically, it is straightforward to represent product types. A struct or
+tuple in Swift corresponds to a product of sets; an enum in Swift
+corresponds to an addition of sets.
 
 ```swift
-/// Computes derivatives of `body` at scalar `x`.
-func derivatives<T : FloatingPoint, R : Differentiable>(
-    at x: T, in body: @autodiff(forward) (T) throws -> R
-) rethrows -> R.TangentVector {
-    return #differential(body)(x)
+struct Parameters : VectorNumeric, Differentiable {
+    var a: Vector<Float>
+    var b: Float
 }
+```
 
+Struct `Parameters` is equivalent to a product of sets `Vector<Float>` and
+`Float`, or a product of a real vector space `ℝⁿ` and a scalar field `ℝ`, namely
+`ℝⁿ ⨯ ℝ`, which is also a vector space. To make `Parameters` obtain the traits
+of a vector space, we extend the compiler to derive a conformance to
+`VectorNumeric` similar to how `Codable` and `Hashable` conformances are
+derived. When a conformance clause is given in the current file and when all
+stored properties conform to `VectorNumeric` with the same `ScalarElement`, the
+compiler synthesizes AST to make this type conform, with all protocol requirements
+applying property-wise.
+
+After deriving conformances to `VectorNumeric`:
+
+```swift
+struct Parameters : VectorNumeric {
+    var a: Vector<Float>
+    var b: Float
+
+    // derived:
+    typealias ScalarElement = Float
+
+    // derived:
+    struct Dimensionality {
+        var a: Vector<Float>.Dimensionality
+        var b: Float.Dimensionality
+    }
+
+    // derived:
+    func + (lhs: Parameters, rhs: Parameters) -> Parameters {
+        return Parameters(a: lhs.a + rhs.a, b: lhs.b + rhs.b)
+    }
+    // ...
+}
+```
+
+In order for `Parameters` to be differentiable, it must also need to conform to
+`Differentiable`. Deriving conformances to `Differentiable` can follow the same
+rules.
+
+```swift
+struct MyShapes : Differentiable {
+    var a: Circle // conforms to Differentiable
+    var b: Square // conforms to Differentiable
+}
+```
+
+After deriving conformances to `Differentiable`:
+
+```swift
+struct MyShapes : Differentiable {
+    var a: Circle
+    var b: Square
+
+    // derived:
+    struct TangentVector : VectorNumeric {
+        var a: Circle.TangentVector
+        var b: Square.TangentVector
+    }
+    // derived:
+    struct CotangentVector : VectorNumeric {
+        var a: Circle.CotangentVector
+        var b: Square.CotangentVector
+    }
+
+    // derived:
+    func moved(toward direction: TangentVector) -> MyShapes {
+        return MyShapes(a: a.moved(toward: direction.a),
+                        b: a.moved(toward: direction.b))
+    }
+
+    // derived:
+    func tangentVector(from cotangent: CotangentVector) -> TangentVector {
+        return TangentVector(a: a.tangentVector(from: cotangent.a)
+                             b: b.tangentVector(from: cotangent.b))
+    }
+}
+```
+
+With derived conformances to these protocols, the user can now write arbitrarily
+nested structs of differentiable manifolds, and make them differentiable with
+trivial effort, greatly simplifying the development.
+
+### Generalized Differential Operators
+
+In the new `Differentiable` protocol, we added `Tangent` and `Cotangent` types
+ to represent the type of Jacobian-vector products and vector-Jacobian products,
+ respectively. We make the following changes to the existing differential
+ operators we introduced.
+ - Differnetial opreators that return `T` as a forward-differentiated derivative
+   will return `T.Tangent` instead.
+ - Differential operators that return `T` as a reverse-differentiated derivative
+   will return `T.Cotangent` instead.
+ - Vectors `T` for computing Jacobian-vector products will become `T.Tangent`.
+ - Vectors `T` for computing vector-Jacobian products will become `T.Cotangent`.
+
+ Here we list a few updated differential operators.
+
+#### Jacobian-Vector Products and Vector-Jacobian Products
+
+Jacobian-vector products (forward-mode) and vector-Jacobian products
+(reverse-mode) are extremely useful differential operators for lots of tasks in
+numerical computing.
+
+```swift
 /// Computes Jacobian-vector products of `body` at `x`.
 func jacobianVectorProducts<T : Differentiable, R : Differentiable>(
     at x: T, vector: T.TangentVector,
     in body: @autodiff(forward) (T) throws -> R
 ) rethrows -> R.TangentVector {
-    return #differential(body)(x)(direction)
-}
-```
-
-#### Vector-Jacobian Products
-
-```swift
-/// Computes the gradient of `body` at `x`.
-func gradient<T : Differentiable, R : FloatingPoint>(
-    at x: T, in body: @autodiff(reverse) (T) throws -> R
-) rethrows -> T.CotangentVector {
-    return #gradient(body)(x)
+    return #differential(body)(x)(vector)
 }
 
 /// Computes the vector-Jacobian products of `body` at `x`.
@@ -1024,9 +1337,27 @@ func vectorJacobianProducts<T : Differentiable, R : Differentiable>(
     at x: T, vector: R.CotangentVector,
     in body: @autodiff(reverse) (T) throws -> R
 ) rethrows -> T.CotangentVector {
-    return #chainableGradient(body, seed)(x)
+    return #pullback(body)(x)(vector)
 }
 ```
+
+### Differential and Pullback
+
+```swift
+/// Computes the differential of `body` at `x`.
+func differential<T : Differentiable, R : Differentiable>(
+    at x: T, in body: @autodiff(reverse) (T) throws -> R
+) rethrows -> (T.TangentVector) -> (originalResult: T, derivative: R.TangentVector) {
+    return #differential(body)(x)
+}
+
+/// Computes the original value of `body(x)` and the pullback (chainable gradient)
+/// at `x`.
+func pullback<T : Differentiable, R : Differentiable>(
+    at x: T, in body: @autodiff(reverse) (T) throws -> R
+) rethrows -> (originalResult: T, pullback: (R.CotangentVector) -> T.CotangentVector) {
+    return #pullback(body)(x)
+}
 
 ### Solution
 
@@ -1116,14 +1447,14 @@ The derivative customization API is just as simple.
 
 ```swift
 public extension Differentiable {
-    @differentiable(forward, wrt: self, tangent: tangentCustomizingGradient)
-    func withCustomizedDerivative(
+    @differentiable(forward, wrt: self, tangent: adjointWithCustomizedDerivatives)
+    func withCustomizedDerivatives(
         using body: @nondiff (TangentVector?) -> TangentVector?
     ) -> Self {
         return value
     }
 
-    internal func adjointCustomizingGradient(
+    internal func adjointWithCustomizedDerivatives(
         body: (TangentVector?) -> TangentVector?,
         tangent: Self?
     ) -> TangentVector? {
@@ -1141,7 +1472,7 @@ var prediction = input
 for _ in 0...5 {
     // Stop gradient when necessary.
     var shouldStop = false
-    prediction = prediction.withCustomizedGradient { grad in
+    prediction = prediction.withCustomizedDerivatives { grad in
         if grad < lowerBound {
             shouldStop = true
         }
@@ -1155,17 +1486,22 @@ for _ in 0...5 {
 ```
 
 Setting a mutable flag is not the most user-friendly way. We can create an API
-that wraps `withCustomizedDerivative(using:)` and returns a `Bool`, so that later code
-can decide whether to `break` from the loop based on the return value from that
-API.
+that wraps `withCustomizedDerivatives(using:)` and returns a `Bool`, so that
+later code can decide whether to `break` from the loop based on the return value
+from that API.
+
+Applications
+------------
+
+Future Directions
+-----------------
 
 Conclusions
--------------
+-----------
 
 Acknowledgements
 ----------------
 
-Special thanks to Dan Zheng, Alex Wiltschko, Bart van Merriënboer, Dougal
-Maclaurin, Matthew Johnson, Gordon Plotkin, Tim Harley, Malcolm Reynolds, Marc
-Rasi, and Chris Lattner for their input to the design of this powerful language
-feature.
+The author would like to thank Dan Zheng, Chris Lattner, Alex Wiltschko, Bart
+van Merriënboer, Gordon Plotkin, Dougal Maclaurin, Matthew Johnson, Casey Chu,
+and Tim Harley for their input to the design of this powerful language feature.
